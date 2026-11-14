@@ -33,14 +33,12 @@ import io.netty.util.CharsetUtil;
 
 /**
  * A simple handler that responds with the message "Hello World!".
- *
- * <p>This example is making use of the "multiplexing" http2 API, where streams are mapped to child
- * Channels. This API is very experimental and incomplete.
  */
 @Sharable
 public class HelloWorldHttp2Handler extends ChannelDuplexHandler {
 
-    static final ByteBuf RESPONSE_BYTES = unreleasableBuffer(copiedBuffer("Hello World", CharsetUtil.UTF_8));
+    static final ByteBuf RESPONSE_BYTES = unreleasableBuffer(
+            copiedBuffer("Hello World", CharsetUtil.UTF_8)).asReadOnly();
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {

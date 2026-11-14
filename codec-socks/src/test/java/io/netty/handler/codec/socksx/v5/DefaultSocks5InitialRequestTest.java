@@ -15,8 +15,8 @@
  */
 package io.netty.handler.codec.socksx.v5;
 
-import org.junit.Test;
-import static org.junit.Assert.assertTrue;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 public class DefaultSocks5InitialRequestTest {
     @Test
@@ -24,7 +24,7 @@ public class DefaultSocks5InitialRequestTest {
         try {
             new DefaultSocks5InitialRequest();
         } catch (Exception e) {
-            assertTrue(e instanceof IllegalArgumentException);
+            assertInstanceOf(IllegalArgumentException.class, e);
         }
     }
 }

@@ -36,10 +36,11 @@ import io.netty.handler.ssl.util.SelfSignedCertificate;
 import io.netty.util.internal.PlatformDependent;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
-import org.junit.runners.Parameterized.Parameters;
+import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.function.Executable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSession;
@@ -53,13 +54,15 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
-@RunWith(Parameterized.class)
 public class SocketSslGreetingTest extends AbstractSocketTest {
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(SocketSslGreetingTest.class);
@@ -79,7 +82,6 @@ public class SocketSslGreetingTest extends AbstractSocketTest {
         KEY_FILE = ssc.privateKey();
     }
 
-    @Parameters(name = "{index}: serverEngine = {0}, clientEngine = {1}, delegate = {2}")
     public static Collection<Object[]> data() throws Exception {
         List<SslContext> serverContexts = new ArrayList<SslContext>();
         serverContexts.add(SslContextBuilder.forServer(CERT_FILE, KEY_FILE).sslProvider(SslProvider.JDK).build());
@@ -107,16 +109,6 @@ public class SocketSslGreetingTest extends AbstractSocketTest {
         return params;
     }
 
-    private final SslContext serverCtx;
-    private final SslContext clientCtx;
-    private final boolean delegate;
-
-    public SocketSslGreetingTest(SslContext serverCtx, SslContext clientCtx, boolean delegate) {
-        this.serverCtx = serverCtx;
-        this.clientCtx = clientCtx;
-        this.delegate = delegate;
-    }
-
     private static SslHandler newSslHandler(SslContext sslCtx, ByteBufAllocator allocator, Executor executor) {
         if (executor == null) {
             return sslCtx.newHandler(allocator);
@@ -126,12 +118,21 @@ public class SocketSslGreetingTest extends AbstractSocketTest {
     }
 
     // Test for https://github.com/netty/netty/pull/2437
-    @Test(timeout = 30000)
-    public void testSslGreeting() throws Throwable {
-        run();
+    @ParameterizedTest(name = "{index}: serverEngine = {0}, clientEngine = {1}, delegate = {2}")
+    @MethodSource("data")
+    @Timeout(value = 30000, unit = TimeUnit.MILLISECONDS)
+    public void testSslGreeting(final SslContext serverCtx, final SslContext clientCtx, final boolean delegate,
+                                TestInfo testInfo) throws Throwable {
+        run(testInfo, new Runner<ServerBootstrap, Bootstrap>() {
+            @Override
+            public void run(ServerBootstrap serverBootstrap, Bootstrap bootstrap) throws Throwable {
+                testSslGreeting(sb, cb, serverCtx, clientCtx, delegate);
+            }
+        });
     }
 
-    public void testSslGreeting(ServerBootstrap sb, Bootstrap cb) throws Throwable {
+    public void testSslGreeting(ServerBootstrap sb, Bootstrap cb, final SslContext serverCtx,
+                                final SslContext clientCtx, boolean delegate) throws Throwable {
         final ServerHandler sh = new ServerHandler();
         final ClientHandler ch = new ClientHandler();
 
@@ -181,6 +182,7 @@ public class SocketSslGreetingTest extends AbstractSocketTest {
         } finally {
             if (executorService != null) {
                 executorService.shutdown();
+                assertTrue(executorService.awaitTermination(5, TimeUnit.SECONDS));
             }
         }
     }
@@ -242,13 +244,13 @@ public class SocketSslGreetingTest extends AbstractSocketTest {
             if (evt instanceof SslHandshakeCompletionEvent) {
                 final SslHandshakeCompletionEvent event = (SslHandshakeCompletionEvent) evt;
                 if (event.isSuccess()) {
-                    SSLSession session = ctx.pipeline().get(SslHandler.class).engine().getSession();
-                    try {
-                        session.getPeerCertificates();
-                        fail();
-                    } catch (SSLPeerUnverifiedException e) {
-                        // expected
-                    }
+                    final SSLSession session = ctx.pipeline().get(SslHandler.class).engine().getSession();
+                    assertThrows(SSLPeerUnverifiedException.class, new Executable() {
+                        @Override
+                        public void execute() throws Throwable {
+                            session.getPeerCertificates();
+                        }
+                    });
                     try {
                         session.getPeerCertificateChain();
                         fail();
@@ -261,12 +263,12 @@ public class SocketSslGreetingTest extends AbstractSocketTest {
                             throw e;
                         }
                     }
-                    try {
-                        session.getPeerPrincipal();
-                        fail();
-                    } catch (SSLPeerUnverifiedException e) {
-                        // expected
-                    }
+                    assertThrows(SSLPeerUnverifiedException.class, new Executable() {
+                        @Override
+                        public void execute() throws Throwable {
+                            session.getPeerPrincipal();
+                        }
+                    });
                 }
             }
             ctx.fireUserEventTriggered(evt);

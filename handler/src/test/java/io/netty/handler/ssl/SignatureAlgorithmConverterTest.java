@@ -15,10 +15,10 @@
  */
 package io.netty.handler.ssl;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 public class SignatureAlgorithmConverterTest {
 
@@ -50,6 +50,16 @@ public class SignatureAlgorithmConverterTest {
     @Test
     public void testBoringSSLPSS() {
         assertEquals("SHA256withRSA", SignatureAlgorithmConverter.toJavaName("rsa_pss_rsae_sha256"));
+    }
+
+    @Test
+    public void testEd25519() {
+        assertEquals("Ed25519", SignatureAlgorithmConverter.toJavaName("ed25519"));
+    }
+
+    @Test
+    public void testEd448() {
+        assertEquals("Ed448", SignatureAlgorithmConverter.toJavaName("ed448"));
     }
 
     @Test

@@ -21,16 +21,18 @@ import io.netty.channel.AddressedEnvelope;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.channel.socket.DatagramPacket;
 import io.netty.handler.codec.CorruptedFrameException;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
+import io.netty.handler.codec.TooLongFrameException;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 
 import java.net.InetSocketAddress;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class DnsResponseTest {
 
@@ -73,38 +75,39 @@ public class DnsResponseTest {
     };
 
     @Test
-    public void readResponseTest() throws Exception {
+    public void readResponseTest() {
         EmbeddedChannel embedder = new EmbeddedChannel(new DatagramDnsResponseDecoder());
         for (byte[] p: packets) {
             ByteBuf packet = embedder.alloc().buffer(512).writeBytes(p);
             embedder.writeInbound(new DatagramPacket(packet, null, new InetSocketAddress(0)));
             AddressedEnvelope<DnsResponse, InetSocketAddress> envelope = embedder.readInbound();
-            assertThat(envelope, is(instanceOf(DatagramDnsResponse.class)));
+            assertInstanceOf(DatagramDnsResponse.class, envelope);
             DnsResponse response = envelope.content();
-            assertThat(response, is(sameInstance((Object) envelope)));
+            assertSame(envelope, response);
 
             ByteBuf raw = Unpooled.wrappedBuffer(p);
-            assertThat(response.id(), is(raw.getUnsignedShort(0)));
-            assertThat(response.count(DnsSection.QUESTION), is(raw.getUnsignedShort(4)));
-            assertThat(response.count(DnsSection.ANSWER), is(raw.getUnsignedShort(6)));
-            assertThat(response.count(DnsSection.AUTHORITY), is(raw.getUnsignedShort(8)));
-            assertThat(response.count(DnsSection.ADDITIONAL), is(raw.getUnsignedShort(10)));
+            assertEquals(raw.getUnsignedShort(0), response.id());
+            assertEquals(raw.getUnsignedShort(4), response.count(DnsSection.QUESTION));
+            assertEquals(raw.getUnsignedShort(6), response.count(DnsSection.ANSWER));
+            assertEquals(raw.getUnsignedShort(8), response.count(DnsSection.AUTHORITY));
+            assertEquals(raw.getUnsignedShort(10), response.count(DnsSection.ADDITIONAL));
 
             envelope.release();
         }
         assertFalse(embedder.finish());
     }
 
-    @Rule
-    public ExpectedException exception = ExpectedException.none();
-
     @Test
-    public void readMalformedResponseTest() throws Exception {
-        EmbeddedChannel embedder = new EmbeddedChannel(new DatagramDnsResponseDecoder());
-        ByteBuf packet = embedder.alloc().buffer(512).writeBytes(malformedLoopPacket);
-        exception.expect(CorruptedFrameException.class);
+    public void readMalformedResponseTest() {
+        final EmbeddedChannel embedder = new EmbeddedChannel(new DatagramDnsResponseDecoder());
+        final ByteBuf packet = embedder.alloc().buffer(512).writeBytes(malformedLoopPacket);
         try {
-            embedder.writeInbound(new DatagramPacket(packet, null, new InetSocketAddress(0)));
+            assertThrows(CorruptedFrameException.class, new Executable() {
+                @Override
+                public void execute() {
+                    embedder.writeInbound(new DatagramPacket(packet, null, new InetSocketAddress(0)));
+                }
+            });
         } finally {
             assertFalse(embedder.finish());
         }
@@ -112,13 +115,55 @@ public class DnsResponseTest {
 
     @Test
     public void readIncompleteResponseTest() {
-        EmbeddedChannel embedder = new EmbeddedChannel(new DatagramDnsResponseDecoder());
-        ByteBuf packet = embedder.alloc().buffer(512);
-        exception.expect(CorruptedFrameException.class);
+        final EmbeddedChannel embedder = new EmbeddedChannel(new DatagramDnsResponseDecoder());
+        final ByteBuf packet = embedder.alloc().buffer(512);
         try {
-            embedder.writeInbound(new DatagramPacket(packet, null, new InetSocketAddress(0)));
+            assertThrows(CorruptedFrameException.class, new Executable() {
+                @Override
+                public void execute() {
+                    embedder.writeInbound(new DatagramPacket(packet, null, new InetSocketAddress(0)));
+                }
+            });
         } finally {
             assertFalse(embedder.finish());
         }
+    }
+
+    @Test
+    public void rejectTooManyRecordsInResponse() {
+        // QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT
+        for (int section = 0; section < 4; section++) {
+            final EmbeddedChannel embedder = new EmbeddedChannel(new DatagramDnsResponseDecoder());
+            final ByteBuf packet = newHeader(embedder, 0x8000, section, DnsCodecUtil.MAX_RECORDS_PER_SECTION + 1);
+            try {
+                assertThrows(TooLongFrameException.class, new Executable() {
+                    @Override
+                    public void execute() throws Throwable {
+                        embedder.writeInbound(new DatagramPacket(packet, null, new InetSocketAddress(0)));
+                    }
+                });
+            } finally {
+                assertFalse(embedder.finish());
+            }
+        }
+    }
+
+    @Test
+    public void acceptMaxRecordsInResponse() {
+        EmbeddedChannel embedder = new EmbeddedChannel(new DatagramDnsResponseDecoder());
+        // No records follow the header, so the response is considered truncated but must not be rejected.
+        ByteBuf packet = newHeader(embedder, 0x8000, 1, DnsCodecUtil.MAX_RECORDS_PER_SECTION);
+        assertTrue(embedder.writeInbound(new DatagramPacket(packet, null, new InetSocketAddress(0))));
+        ((DatagramDnsResponse) embedder.readInbound()).release();
+        assertFalse(embedder.finish());
+    }
+
+    private static ByteBuf newHeader(EmbeddedChannel channel, int flags, int section, int count) {
+        ByteBuf buf = channel.alloc().buffer(12);
+        buf.writeShort(1).writeShort(flags);
+        for (int i = 0; i < 4; i++) {
+            buf.writeShort(i == section ? count : 0);
+        }
+        return buf;
     }
 }

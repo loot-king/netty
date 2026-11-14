@@ -30,19 +30,23 @@ import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder.ErrorDataDec
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder.MultiPartStatus;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder.NotEnoughDataDecoderException;
 import io.netty.util.CharsetUtil;
+import io.netty.util.internal.EmptyArrays;
 import io.netty.util.internal.InternalThreadLocalMap;
+import io.netty.util.internal.PlatformDependent;
 import io.netty.util.internal.StringUtil;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.nio.charset.IllegalCharsetNameException;
 import java.nio.charset.UnsupportedCharsetException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 
-import static io.netty.buffer.Unpooled.EMPTY_BUFFER;
-import static io.netty.util.internal.ObjectUtil.*;
+import static io.netty.util.internal.ObjectUtil.checkNotNull;
+import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
 
 /**
  * This decoder will decode Body and can handle POST BODY.
@@ -61,6 +65,16 @@ public class HttpPostMultipartRequestDecoder implements InterfaceHttpPostRequest
      * Request to decode
      */
     private final HttpRequest request;
+
+    /**
+     * The maximum number of fields allows by the form
+     */
+    private final int maxFields;
+
+    /**
+     * The maximum number of accumulated bytes when decoding a field
+     */
+    private final int maxBufferedBytes;
 
     /**
      * Default charset to use
@@ -96,7 +110,7 @@ public class HttpPostMultipartRequestDecoder implements InterfaceHttpPostRequest
     /**
      * If multipart, this is the boundary for the global multipart
      */
-    private String multipartDataBoundary;
+    private final String multipartDataBoundary;
 
     /**
      * If multipart, there could be internal multiparts (mixed) to the global
@@ -173,35 +187,71 @@ public class HttpPostMultipartRequestDecoder implements InterfaceHttpPostRequest
      *             errors
      */
     public HttpPostMultipartRequestDecoder(HttpDataFactory factory, HttpRequest request, Charset charset) {
-        this.request = checkNotNull(request, "request");
-        this.charset = checkNotNull(charset, "charset");
-        this.factory = checkNotNull(factory, "factory");
-        // Fill default values
-
-        setMultipart(this.request.headers().get(HttpHeaderNames.CONTENT_TYPE));
-        if (request instanceof HttpContent) {
-            // Offer automatically if the given request is als type of HttpContent
-            // See #1089
-            offer((HttpContent) request);
-        } else {
-            parseBody();
-        }
+        this(factory, request, charset, HttpPostRequestDecoder.DEFAULT_MAX_FIELDS,
+                HttpPostRequestDecoder.DEFAULT_MAX_BUFFERED_BYTES);
     }
 
     /**
-     * Set from the request ContentType the multipartDataBoundary and the possible charset.
+     *
+     * @param factory
+     *            the factory used to create InterfaceHttpData
+     * @param request
+     *            the request to decode
+     * @param charset
+     *            the charset to use as default
+     * @param maxFields
+     *            the maximum number of fields the form can have, {@code -1} to disable
+     * @param maxBufferedBytes
+     *            the maximum number of bytes the decoder can buffer when decoding a field, {@code -1} to disable
+     * @throws NullPointerException
+     *             for request or charset or factory
+     * @throws ErrorDataDecoderException
+     *             if the default charset was wrong when decoding or other
+     *             errors
      */
-    private void setMultipart(String contentType) {
-        String[] dataBoundary = HttpPostRequestDecoder.getMultipartDataBoundary(contentType);
+    public HttpPostMultipartRequestDecoder(HttpDataFactory factory, HttpRequest request, Charset charset,
+                                           int maxFields, int maxBufferedBytes) {
+        this.request = checkNotNull(request, "request");
+        this.charset = checkNotNull(charset, "charset");
+        this.factory = checkNotNull(factory, "factory");
+        this.maxFields = maxFields;
+        this.maxBufferedBytes = maxBufferedBytes;
+        // Fill default values
+
+        String contentTypeValue = this.request.headers().get(HttpHeaderNames.CONTENT_TYPE);
+        if (contentTypeValue == null || contentTypeValue.isEmpty()) {
+            // Content-Type must be present and cannot have an empty value, because it defines the data boundary value.
+            throw new ErrorDataDecoderException(
+                "No '" + HttpHeaderNames.CONTENT_TYPE + "' header present, or value is empty.");
+        }
+
+        String[] dataBoundary = HttpPostRequestDecoder.getMultipartDataBoundary(contentTypeValue);
         if (dataBoundary != null) {
             multipartDataBoundary = dataBoundary[0];
             if (dataBoundary.length > 1 && dataBoundary[1] != null) {
-                charset = Charset.forName(dataBoundary[1]);
+                try {
+                    this.charset = Charset.forName(dataBoundary[1]);
+                } catch (IllegalCharsetNameException e) {
+                    throw new ErrorDataDecoderException(e);
+                }
             }
         } else {
             multipartDataBoundary = null;
         }
         currentStatus = MultiPartStatus.HEADERDELIMITER;
+
+        try {
+            if (request instanceof HttpContent) {
+                // Offer automatically if the given request is als type of HttpContent
+                // See #1089
+                offer((HttpContent) request);
+            } else {
+                parseBody();
+            }
+        } catch (Throwable e) {
+            destroy();
+            PlatformDependent.throwException(e);
+        }
     }
 
     private void checkDestroyed() {
@@ -326,13 +376,8 @@ public class HttpPostMultipartRequestDecoder implements InterfaceHttpPostRequest
 
         ByteBuf buf = content.content();
         if (undecodedChunk == null) {
-            undecodedChunk = isLastChunk ?
-                    // Take a slice instead of copying when the first chunk is also the last
-                    // as undecodedChunk.writeBytes will never be called.
-                    buf.retainedSlice() :
-                    // Maybe we should better not copy here for performance reasons but this will need
-                    // more care by the caller to release the content in a correct manner later
-                    // So maybe something to optimize on a later stage
+            undecodedChunk =
+                    // Since the Handler will release the incoming later on, we need to copy it
                     //
                     // We are explicit allocate a buffer and NOT calling copy() as otherwise it may set a maxCapacity
                     // which is not really usable for us as we may exceed it once we add more bytes.
@@ -341,6 +386,9 @@ public class HttpPostMultipartRequestDecoder implements InterfaceHttpPostRequest
             undecodedChunk.writeBytes(buf);
         }
         parseBody();
+        if (maxBufferedBytes > 0 && undecodedChunk != null && undecodedChunk.readableBytes() > maxBufferedBytes) {
+            throw new HttpPostRequestDecoder.TooLongFormFieldException();
+        }
         if (undecodedChunk != null && undecodedChunk.writerIndex() > discardThreshold) {
             if (undecodedChunk.refCnt() == 1) {
                 // It's safe to call discardBytes() as we are the only owner of the buffer.
@@ -434,6 +482,9 @@ public class HttpPostMultipartRequestDecoder implements InterfaceHttpPostRequest
     protected void addHttpData(InterfaceHttpData data) {
         if (data == null) {
             return;
+        }
+        if (maxFields > 0 && bodyListHttpData.size() >= maxFields) {
+            throw new HttpPostRequestDecoder.TooManyFormFieldsException();
         }
         List<InterfaceHttpData> datas = bodyMapHttpData.get(data.getName());
         if (datas == null) {
@@ -714,6 +765,8 @@ public class HttpPostMultipartRequestDecoder implements InterfaceHttpPostRequest
                             throw new ErrorDataDecoderException(e);
                         } catch (IllegalArgumentException e) {
                             throw new ErrorDataDecoderException(e);
+                        } catch (ArrayIndexOutOfBoundsException e) {
+                            throw new ErrorDataDecoderException(e);
                         }
                         currentFieldAttributes.put(attribute.getName(), attribute);
                     }
@@ -767,6 +820,18 @@ public class HttpPostMultipartRequestDecoder implements InterfaceHttpPostRequest
                                 throw new ErrorDataDecoderException(e);
                             }
                             currentFieldAttributes.put(HttpHeaderValues.CHARSET, attribute);
+                        } else if (contents[i].contains("=")) {
+                            String name = StringUtil.substringBefore(contents[i], '=');
+                            String values = StringUtil.substringAfter(contents[i], '=');
+                            Attribute attribute;
+                            try {
+                                attribute = factory.createAttribute(request, cleanString(name), values);
+                            } catch (NullPointerException e) {
+                                throw new ErrorDataDecoderException(e);
+                            } catch (IllegalArgumentException e) {
+                                throw new ErrorDataDecoderException(e);
+                            }
+                            currentFieldAttributes.put(name, attribute);
                         } else {
                             Attribute attribute;
                             try {
@@ -860,7 +925,11 @@ public class HttpPostMultipartRequestDecoder implements InterfaceHttpPostRequest
         if (encoding != null) {
             String code;
             try {
-                code = encoding.getValue().toLowerCase();
+                // RFC 2045 Content-Transfer-Encoding values are case-insensitive ASCII tokens.
+                // toLowerCase() without a Locale would corrupt them under Turkish (tr_TR) locale,
+                // where 'I' lowercases to 'ı' (U+0131) and "BINARY" becomes "bınary" - never
+                // matching the lowercase ASCII constants compared against below.
+                code = encoding.getValue().toLowerCase(Locale.US);
             } catch (IOException e) {
                 throw new ErrorDataDecoderException(e);
             }
@@ -908,7 +977,7 @@ public class HttpPostMultipartRequestDecoder implements InterfaceHttpPostRequest
                 }
                 currentFileUpload = factory.createFileUpload(request,
                         cleanString(nameAttribute.getValue()), cleanString(filenameAttribute.getValue()),
-                        contentType, mechanism.value(), localCharset,
+                        cleanMimeContentType(contentType), mechanism.value(), localCharset,
                         size);
             } catch (NullPointerException e) {
                 throw new ErrorDataDecoderException(e);
@@ -948,8 +1017,15 @@ public class HttpPostMultipartRequestDecoder implements InterfaceHttpPostRequest
      */
     @Override
     public void destroy() {
-        // Release all data items, including those not yet pulled
+        // Release all data items, including those not yet pulled, only file based items
         cleanFiles();
+        // Clean Memory based data
+        for (InterfaceHttpData httpData : bodyListHttpData) {
+            // Might have been already released by the user
+            if (httpData.refCnt() > 0) {
+                httpData.release();
+            }
+        }
 
         destroyed = true;
 
@@ -1164,12 +1240,22 @@ public class HttpPostMultipartRequestDecoder implements InterfaceHttpPostRequest
             // Possible last bytes contain partially delimiter
             // (delimiter is possibly partially there, at least 1 missing byte),
             // therefore searching last delimiter.length +1 (+1 for CRLF instead of LF)
-            int lastPosition = undecodedChunk.readableBytes() - bdelimiter.length - 1;
+            int readableBytes = undecodedChunk.readableBytes();
+            int lastPosition = readableBytes - bdelimiter.length - 1;
             if (lastPosition < 0) {
                 // Not enough bytes, but at most delimiter.length bytes available so can still try to find CRLF there
                 lastPosition = 0;
             }
-            posDelimiter = HttpPostBodyUtil.findLastLineBreak(undecodedChunk, startReaderIndex  + lastPosition);
+            posDelimiter = HttpPostBodyUtil.findLastLineBreak(undecodedChunk, startReaderIndex + lastPosition);
+            // No LineBreak, however CR can be at the end of the buffer, LF not yet there (issue #11668)
+            // Check if last CR (if any) shall not be in the content (definedLength vs actual length + buffer - 1)
+            if (posDelimiter < 0 &&
+                httpData.definedLength() == httpData.length() + readableBytes - 1 &&
+                undecodedChunk.getByte(readableBytes + startReaderIndex - 1) == HttpConstants.CR) {
+                // Last CR shall precede a future LF
+                lastPosition = 0;
+                posDelimiter = readableBytes - 1;
+            }
             if (posDelimiter < 0) {
                 // not found so this chunk can be fully added
                 ByteBuf content = undecodedChunk.copy();
@@ -1228,14 +1314,34 @@ public class HttpPostMultipartRequestDecoder implements InterfaceHttpPostRequest
                 sb.append(HttpConstants.SP_CHAR);
                 break;
             case HttpConstants.DOUBLE_QUOTE:
-                // nothing added, just removes it
+            case HttpConstants.BACKSLASH:
+                // nothing added, just removes double quote and backslash
                 break;
             default:
-                sb.append(nextChar);
+                if (nextChar < HttpConstants.SP || nextChar == HttpConstants.DEL) {
+                    sb.append(HttpConstants.SP_CHAR);
+                } else {
+                    sb.append(nextChar);
+                }
                 break;
             }
         }
         return sb.toString().trim();
+    }
+
+    /**
+     * The Content-Type values in part-headers are defined by RFC 2045, aka. MIME, which effectively means
+     * we use a default content type if the given content type is empty or malformed.
+     * @param contentType The Content-Type part header value.
+     * @return A cleaned up or replaced Content-Type header value that passes validation.
+     */
+    private static String cleanMimeContentType(String contentType) {
+        if (!FileUploadUtil.isContentTypeForMultiPartValid(contentType)) {
+            // RFC 2045 section 5.2 recommends falling back to a default content type,
+            // when a "syntactically invalid Content-Type header field is encountered".
+            return HttpPostBodyUtil.DEFAULT_BINARY_CONTENT_TYPE;
+        }
+        return contentType;
     }
 
     /**
@@ -1344,7 +1450,7 @@ public class HttpPostMultipartRequestDecoder implements InterfaceHttpPostRequest
             }
         }
         values.add(svalue.substring(start));
-        return values.toArray(new String[0]);
+        return values.toArray(EmptyArrays.EMPTY_STRINGS);
     }
 
     /**

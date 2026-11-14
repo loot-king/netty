@@ -23,6 +23,7 @@ import io.netty.util.internal.PlatformDependent;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
+import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -82,7 +83,7 @@ public abstract class AbstractDiskHttpData extends AbstractHttpData {
         String newpostfix;
         String diskFilename = getDiskFilename();
         if (diskFilename != null) {
-            newpostfix = '_' + diskFilename;
+            newpostfix = '_' + Integer.toString(diskFilename.hashCode());
         } else {
             newpostfix = getPostfix();
         }
@@ -117,6 +118,7 @@ public abstract class AbstractDiskHttpData extends AbstractHttpData {
                 // empty file
                 if (!file.createNewFile()) {
                     if (file.length() == 0) {
+                        setCompleted();
                         return;
                     } else {
                         if (!file.delete() || !file.createNewFile()) {
@@ -124,6 +126,7 @@ public abstract class AbstractDiskHttpData extends AbstractHttpData {
                         }
                     }
                 }
+                setCompleted();
                 return;
             }
             RandomAccessFile accessFile = new RandomAccessFile(file, "rw");
@@ -228,7 +231,7 @@ public abstract class AbstractDiskHttpData extends AbstractHttpData {
         }
         file = tempFile();
         RandomAccessFile accessFile = new RandomAccessFile(file, "rw");
-        int written = 0;
+        long written = 0;
         try {
             accessFile.setLength(0);
             FileChannel localfileChannel = accessFile.getChannel();
@@ -239,6 +242,7 @@ public abstract class AbstractDiskHttpData extends AbstractHttpData {
                 byteBuffer.position(read).flip();
                 written += localfileChannel.write(byteBuffer);
                 checkSize(written);
+                byteBuffer.clear();
                 read = inputStream.read(bytes);
             }
             localfileChannel.force(false);
@@ -458,7 +462,11 @@ public abstract class AbstractDiskHttpData extends AbstractHttpData {
             ByteBuffer byteBuffer = ByteBuffer.wrap(array);
             int read = 0;
             while (read < srcsize) {
-                read += fileChannel.read(byteBuffer);
+                int readnow = fileChannel.read(byteBuffer);
+                if (readnow == -1) {
+                    throw new EOFException("Unexpected end of file after " + read + " of " + srcsize + " bytes");
+                }
+                read += readnow;
             }
         } finally {
             accessFile.close();

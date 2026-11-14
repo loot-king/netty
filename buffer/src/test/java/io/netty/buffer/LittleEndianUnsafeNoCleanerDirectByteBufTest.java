@@ -16,21 +16,21 @@
 package io.netty.buffer;
 
 import io.netty.util.internal.PlatformDependent;
-import org.junit.Assume;
-import org.junit.Before;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeEach;
 
 public class LittleEndianUnsafeNoCleanerDirectByteBufTest extends LittleEndianDirectByteBufTest {
 
-    @Before
+    @BeforeEach
     @Override
     public void init() {
-        Assume.assumeTrue("java.nio.DirectByteBuffer.<init>(long, int) not found, skip tests",
-                PlatformDependent.useDirectBufferNoCleaner());
+        Assumptions.assumeTrue(PlatformDependent.useDirectBufferNoCleaner(),
+          "java.nio.DirectByteBuffer.<init>(long, int) not found, skip tests");
         super.init();
     }
 
     @Override
     protected ByteBuf newBuffer(int length, int maxCapacity) {
-        return new UnpooledUnsafeNoCleanerDirectByteBuf(UnpooledByteBufAllocator.DEFAULT, length, maxCapacity);
+        return new UnpooledUnsafeNoCleanerDirectByteBuf(UnpooledByteBufAllocator.DEFAULT, length, maxCapacity, true);
     }
 }

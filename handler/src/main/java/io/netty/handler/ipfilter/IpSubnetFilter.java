@@ -21,11 +21,13 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.util.internal.ObjectUtil;
 
 import java.net.Inet4Address;
+import java.net.Inet6Address;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 
@@ -55,8 +57,8 @@ import java.util.List;
 public class IpSubnetFilter extends AbstractRemoteAddressFilter<InetSocketAddress> {
 
     private final boolean acceptIfNotFound;
-    private final List<IpSubnetFilterRule> ipv4Rules;
-    private final List<IpSubnetFilterRule> ipv6Rules;
+    private final IpSubnetFilterRule[] ipv4Rules;
+    private final IpSubnetFilterRule[] ipv6Rules;
     private final IpFilterRuleType ipFilterRuleTypeIPv4;
     private final IpFilterRuleType ipFilterRuleTypeIPv6;
 
@@ -160,26 +162,26 @@ public class IpSubnetFilter extends AbstractRemoteAddressFilter<InetSocketAddres
             ipFilterRuleTypeIPv6 = null;
         }
 
-        this.ipv4Rules = sortAndFilter(unsortedIPv4Rules);
-        this.ipv6Rules = sortAndFilter(unsortedIPv6Rules);
+        this.ipv4Rules = unsortedIPv4Rules.isEmpty() ? null : sortAndFilter(unsortedIPv4Rules);
+        this.ipv6Rules = unsortedIPv6Rules.isEmpty() ? null : sortAndFilter(unsortedIPv6Rules);
     }
 
     @Override
     protected boolean accept(ChannelHandlerContext ctx, InetSocketAddress remoteAddress) {
-        if (remoteAddress.getAddress() instanceof Inet4Address) {
-            int indexOf = Collections.binarySearch(ipv4Rules, remoteAddress, IpSubnetFilterRuleComparator.INSTANCE);
+        if (ipv4Rules != null && remoteAddress.getAddress() instanceof Inet4Address) {
+            int indexOf = Arrays.binarySearch(ipv4Rules, remoteAddress, IpSubnetFilterRuleComparator.INSTANCE);
             if (indexOf >= 0) {
                 if (ipFilterRuleTypeIPv4 == null) {
-                    return ipv4Rules.get(indexOf).ruleType() == IpFilterRuleType.ACCEPT;
+                    return ipv4Rules[indexOf].ruleType() == IpFilterRuleType.ACCEPT;
                 } else {
                     return ipFilterRuleTypeIPv4 == IpFilterRuleType.ACCEPT;
                 }
             }
-        } else {
-            int indexOf = Collections.binarySearch(ipv6Rules, remoteAddress, IpSubnetFilterRuleComparator.INSTANCE);
+        } else if (ipv6Rules != null && remoteAddress.getAddress() instanceof Inet6Address) {
+            int indexOf = Arrays.binarySearch(ipv6Rules, remoteAddress, IpSubnetFilterRuleComparator.INSTANCE);
             if (indexOf >= 0) {
                 if (ipFilterRuleTypeIPv6 == null) {
-                    return ipv6Rules.get(indexOf).ruleType() == IpFilterRuleType.ACCEPT;
+                    return ipv6Rules[indexOf].ruleType() == IpFilterRuleType.ACCEPT;
                 } else {
                     return ipFilterRuleTypeIPv6 == IpFilterRuleType.ACCEPT;
                 }
@@ -196,9 +198,19 @@ public class IpSubnetFilter extends AbstractRemoteAddressFilter<InetSocketAddres
      *     <li> Sort the list again </li>
      * </ol>
      */
-    @SuppressWarnings("ConstantConditions")
-    private static List<IpSubnetFilterRule> sortAndFilter(List<IpSubnetFilterRule> rules) {
-        Collections.sort(rules);
+    @SuppressWarnings("ZeroLengthArrayAllocation")
+    private static IpSubnetFilterRule[] sortAndFilter(List<IpSubnetFilterRule> rules) {
+        // Equal network addresses: broader subnet first, so it becomes the parent of the narrower one.
+        Collections.sort(rules, new Comparator<IpSubnetFilterRule>() {
+            @Override
+            public int compare(IpSubnetFilterRule a, IpSubnetFilterRule b) {
+                int cmp = a.compareTo(b);
+                if (cmp != 0) {
+                    return cmp;
+                }
+                return a.contains(b) ? (b.contains(a) ? 0 : -1) : 1;
+            }
+        });
         Iterator<IpSubnetFilterRule> iterator = rules.iterator();
         List<IpSubnetFilterRule> toKeep = new ArrayList<IpSubnetFilterRule>();
 
@@ -214,13 +226,27 @@ public class IpSubnetFilter extends AbstractRemoteAddressFilter<InetSocketAddres
 
             // If parentRule matches childRule, then there's no need to keep the child rule.
             // Otherwise, the rules are distinct and we need both.
-            if (!parentRule.matches(new InetSocketAddress(childRule.getIpAddress(), 1))) {
-                toKeep.add(childRule);
-                // Then we'll keep the child rule around as the parent for the next round.
-                parentRule = childRule;
+            if (parentRule.contains(childRule)) {
+                // The child rule is a subset of the parent rule. If they don't share the same rule type
+                // we can't safely drop the child rule, as doing so would silently change the outcome for
+                // addresses covered by the child but not otherwise expressible with the parent's ruleType.
+                // This binary-search based design can't represent longest-prefix-match semantics, so reject
+                // the unsupported configuration instead of failing open.
+                if (childRule.ruleType() != parentRule.ruleType()) {
+                    throw new IllegalArgumentException(
+                            "IpSubnetFilter does not support overlapping rules with different ruleTypes: "
+                                    + parentRule + " (" + parentRule.ruleType() + ") overlaps "
+                                    + childRule + " (" + childRule.ruleType() + "). "
+                                    + "Use RuleBasedIpFilter for mixed ACCEPT/REJECT carve-outs.");
+                }
+                continue;
             }
+
+            toKeep.add(childRule);
+            // Then we'll keep the child rule around as the parent for the next round.
+            parentRule = childRule;
         }
 
-        return toKeep;
+        return toKeep.toArray(new IpSubnetFilterRule[0]);
     }
 }

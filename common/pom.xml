@@ -21,7 +21,7 @@
   <parent>
     <groupId>io.netty</groupId>
     <artifactId>netty-parent</artifactId>
-    <version>4.1.64.Final-SNAPSHOT</version>
+    <version>4.1.141.Final-SNAPSHOT</version>
   </parent>
 
   <artifactId>netty-common</artifactId>
@@ -39,19 +39,30 @@
 
   <dependencies>
     <dependency>
-      <groupId>com.oracle.substratevm</groupId>
+      <groupId>org.graalvm.nativeimage</groupId>
       <artifactId>svm</artifactId>
       <version>${graalvm.version}</version>
-      <!-- Provided scope as it is only needed for compiling the SVM substitution classes -->
-      <scope>provided</scope>
+      <!-- Optional so maven-bundle-plugin does not make com.oracle.svm.core.annotate a required import -->
+      <optional>true</optional>
     </dependency>
+
+    <!-- sun.misc.Unsafe stubs -->
+    <dependency>
+      <groupId>org.jboss</groupId>
+      <artifactId>jdk-misc</artifactId>
+    </dependency>
+
     <dependency>
       <groupId>org.jctools</groupId>
       <artifactId>jctools-core</artifactId>
       <!-- Need compile scope to be taken into account by shade plugin -->
       <scope>compile</scope>
     </dependency>
-
+    <dependency>
+      <groupId>org.jetbrains</groupId>
+      <artifactId>annotations-java5</artifactId>
+      <scope>provided</scope>
+    </dependency>
     <!-- Logging frameworks - completely optional -->
     <dependency>
       <groupId>org.slf4j</groupId>
@@ -64,8 +75,8 @@
       <optional>true</optional>
     </dependency>
     <dependency>
-      <groupId>log4j</groupId>
-      <artifactId>log4j</artifactId>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-1.2-api</artifactId>
       <optional>true</optional>
     </dependency>
     <dependency>
@@ -94,6 +105,31 @@
       <artifactId>netty-dev-tools</artifactId>
       <scope>test</scope>
       <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-api</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-engine</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-params</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 
@@ -162,12 +198,12 @@
       <plugin>
         <groupId>org.codehaus.gmaven</groupId>
         <artifactId>groovy-maven-plugin</artifactId>
-        <version>2.0</version>
+        <version>2.1.1</version>
         <dependencies>
           <dependency>
             <groupId>org.codehaus.groovy</groupId>
-            <artifactId>groovy-all</artifactId>
-            <version>2.4.8</version>
+            <artifactId>groovy</artifactId>
+            <version>3.0.9</version>
           </dependency>
           <dependency>
             <groupId>ant</groupId>
@@ -191,7 +227,6 @@
       <plugin>
         <groupId>org.apache.felix</groupId>
         <artifactId>maven-bundle-plugin</artifactId>
-        <version>2.5.4</version>
         <executions>
           <execution>
             <id>generate-manifest</id>
@@ -204,8 +239,14 @@
                 <!-- NativeLibraryLoader can be used to manually load native libraries from other bundles that this bundle does not depend on,
                 hence use DynamicImport-Package instruction to ensure the loading is successful -->
                 <DynamicImport-Package>*</DynamicImport-Package>
-                <!-- JCTools is shaded -->
-                <Import-Package>!org.jctools.*;sun.misc;resolution:=optional;*</Import-Package>
+                <Import-Package>
+                  <!-- JCTools is shaded -->
+                  !org.jctools.*,
+                  <!-- JVM vendor packages are optional -->
+                  sun.misc;resolution:=optional,
+                  sun.nio.ch;resolution:=optional,
+                  *
+                </Import-Package>
               </instructions>
             </configuration>
           </execution>

@@ -515,6 +515,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     @Override
     public CharSequence readCharSequence(int length, Charset charset) {
+        checkReadableBytes(length);
         CharSequence sequence = getCharSequence(readerIndex, length, charset);
         readerIndex += length;
         return sequence;
@@ -676,14 +677,14 @@ public abstract class AbstractByteBuf extends ByteBuf {
             // Not need to update the index as we not will use it after this.
         } else if (nBytes < 4) {
             for (int i = nBytes; i > 0; i --) {
-                _setByte(index, (byte) 0);
+                _setByte(index, 0);
                 index ++;
             }
         } else {
             _setInt(index, 0);
             index += 4;
             for (int i = nBytes - 4; i > 0; i --) {
-                _setByte(index, (byte) 0);
+                _setByte(index, 0);
                 index ++;
             }
         }
@@ -1167,14 +1168,14 @@ public abstract class AbstractByteBuf extends ByteBuf {
             wIndex += 4;
         } else if (nBytes < 4) {
             for (int i = nBytes; i > 0; i --) {
-                _setByte(wIndex, (byte) 0);
+                _setByte(wIndex, 0);
                 wIndex++;
             }
         } else {
             _setInt(wIndex, 0);
             wIndex += 4;
             for (int i = nBytes - 4; i > 0; i --) {
-                _setByte(wIndex, (byte) 0);
+                _setByte(wIndex, 0);
                 wIndex++;
             }
         }
@@ -1243,6 +1244,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     @Override
     public String toString(int index, int length, Charset charset) {
+        checkIndex(index, length);
         return ByteBufUtil.decodeString(this, index, length, charset);
     }
 
@@ -1344,7 +1346,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     @Override
     public boolean equals(Object o) {
-        return this == o || (o instanceof ByteBuf && ByteBufUtil.equals(this, (ByteBuf) o));
+        return o instanceof ByteBuf && ByteBufUtil.equals(this, (ByteBuf) o);
     }
 
     @Override

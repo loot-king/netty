@@ -16,14 +16,12 @@
 package io.netty.handler.codec.http2;
 
 import io.netty.util.internal.StringUtil;
-import io.netty.util.internal.UnstableApi;
 
 import static io.netty.util.internal.ObjectUtil.checkNotNull;
 
 /**
  * The default {@link Http2ResetFrame} implementation.
  */
-@UnstableApi
 public final class DefaultHttp2ResetFrame extends AbstractHttp2StreamFrame implements Http2ResetFrame {
 
     private final long errorCode;
@@ -79,7 +77,7 @@ public final class DefaultHttp2ResetFrame extends AbstractHttp2StreamFrame imple
     @Override
     public int hashCode() {
         int hash = super.hashCode();
-        hash = hash * 31 + (int) (errorCode ^ (errorCode >>> 32));
+        hash = hash * 31 + (int) (errorCode ^ errorCode >>> 32);
         return hash;
     }
 }

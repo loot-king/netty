@@ -15,6 +15,7 @@
  */
 package io.netty.buffer;
 
+import static io.netty.util.internal.MathUtil.isOutOfBounds;
 import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
 
 import io.netty.util.ReferenceCounted;
@@ -154,7 +155,7 @@ public class ByteBufInputStream extends InputStream implements DataInput {
 
     // Suppress a warning since the class is not thread-safe
     @Override
-    public void mark(int readlimit) {   // lgtm[java/non-sync-override]
+    public void mark(int readlimit) {
         buffer.markReaderIndex();
     }
 
@@ -174,6 +175,13 @@ public class ByteBufInputStream extends InputStream implements DataInput {
 
     @Override
     public int read(byte[] b, int off, int len) throws IOException {
+        ObjectUtil.checkNotNull(b, "b");
+        if (isOutOfBounds(off, len, b.length)) {
+            throw new IndexOutOfBoundsException();
+        }
+        if (len == 0) {
+            return 0;
+        }
         int available = available();
         if (available == 0) {
             return -1;
@@ -186,12 +194,15 @@ public class ByteBufInputStream extends InputStream implements DataInput {
 
     // Suppress a warning since the class is not thread-safe
     @Override
-    public void reset() throws IOException {    // lgtm[java/non-sync-override]
+    public void reset() throws IOException {
         buffer.resetReaderIndex();
     }
 
     @Override
     public long skip(long n) throws IOException {
+        if (n <= 0) {
+            return 0;
+        }
         if (n > Integer.MAX_VALUE) {
             return skipBytes(Integer.MAX_VALUE);
         } else {
@@ -207,10 +218,7 @@ public class ByteBufInputStream extends InputStream implements DataInput {
 
     @Override
     public byte readByte() throws IOException {
-        int available = available();
-        if (available == 0) {
-            throw new EOFException();
-        }
+        checkAvailable(1);
         return buffer.readByte();
     }
 
@@ -313,6 +321,9 @@ public class ByteBufInputStream extends InputStream implements DataInput {
 
     @Override
     public int skipBytes(int n) throws IOException {
+        if (n <= 0) {
+            return 0;
+        }
         int nBytes = Math.min(available(), n);
         buffer.skipBytes(nBytes);
         return nBytes;

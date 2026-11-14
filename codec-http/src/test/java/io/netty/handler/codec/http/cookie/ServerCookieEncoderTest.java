@@ -15,12 +15,11 @@
  */
 package io.netty.handler.codec.http.cookie;
 
-import static org.hamcrest.CoreMatchers.containsString;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.netty.handler.codec.DateFormatter;
 
@@ -34,7 +33,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import io.netty.handler.codec.http.cookie.CookieHeaderNames.SameSite;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class ServerCookieEncoderTest {
 
@@ -44,13 +43,14 @@ public class ServerCookieEncoderTest {
         int maxAge = 50;
 
         String result = "myCookie=myValue; Max-Age=50; Expires=(.+?); Path=/apathsomewhere;" +
-                " Domain=.adomainsomewhere; Secure; SameSite=Lax";
+                " Domain=.adomainsomewhere; Secure; SameSite=Lax; Partitioned";
         DefaultCookie cookie = new DefaultCookie("myCookie", "myValue");
         cookie.setDomain(".adomainsomewhere");
         cookie.setMaxAge(maxAge);
         cookie.setPath("/apathsomewhere");
         cookie.setSecure(true);
         cookie.setSameSite(SameSite.Lax);
+        cookie.setPartitioned(true);
 
         String encodedCookie = ServerCookieEncoder.STRICT.encode(cookie);
 
@@ -141,7 +141,7 @@ public class ServerCookieEncoderTest {
         try {
             ServerCookieEncoder.STRICT.encode(new DefaultCookie("name", "\"value,\""));
         } catch (IllegalArgumentException e) {
-            assertThat(e.getMessage().toLowerCase(), containsString("cookie value contains an invalid char: ,"));
+            assertThat(e.getMessage().toLowerCase()).contains("cookie value contains an invalid char: ,");
         }
     }
 

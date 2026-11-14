@@ -31,6 +31,7 @@ final class ErrorsStaticallyReferencedJniMethods {
     private ErrorsStaticallyReferencedJniMethods() { }
 
     static native int errnoENOENT();
+    static native int errnoENAMETOOLONG();
     static native int errnoEBADF();
     static native int errnoEPIPE();
     static native int errnoECONNRESET();
@@ -42,5 +43,6 @@ final class ErrorsStaticallyReferencedJniMethods {
     static native int errorEISCONN();
     static native int errorEALREADY();
     static native int errorENETUNREACH();
+    static native int errorEHOSTUNREACH();
     static native String strError(int err);
 }

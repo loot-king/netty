@@ -47,6 +47,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
 import java.nio.channels.MembershipKey;
 import java.nio.channels.SelectionKey;
+import java.nio.channels.UnresolvedAddressException;
 import java.nio.channels.spi.SelectorProvider;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -64,7 +65,7 @@ import java.util.Map;
 public final class NioDatagramChannel
         extends AbstractNioMessageChannel implements io.netty.channel.socket.DatagramChannel {
 
-    private static final ChannelMetadata METADATA = new ChannelMetadata(true);
+    private static final ChannelMetadata METADATA = new ChannelMetadata(true, 16);
     private static final SelectorProvider DEFAULT_SELECTOR_PROVIDER = SelectorProvider.provider();
     private static final String EXPECTED_TYPES =
             " (expected: " + StringUtil.simpleClassName(DatagramPacket.class) + ", " +
@@ -285,10 +286,6 @@ public final class NioDatagramChannel
         }
 
         final int dataLen = data.readableBytes();
-        if (dataLen == 0) {
-            return true;
-        }
-
         final ByteBuffer nioData = data.nioBufferCount() == 1 ? data.internalNioBuffer(data.readerIndex(), dataLen)
                                                               : data.nioBuffer(data.readerIndex(), dataLen);
         final int writtenBytes;
@@ -297,13 +294,22 @@ public final class NioDatagramChannel
         } else {
             writtenBytes = javaChannel().write(nioData);
         }
-        return writtenBytes > 0;
+        // A zero-length datagram is valid; send() and write() return 0 for it.
+        return writtenBytes > 0 || dataLen == 0;
+    }
+
+    private static void checkUnresolved(AddressedEnvelope<?, ?> envelope) {
+        if (envelope.recipient() instanceof InetSocketAddress
+                && (((InetSocketAddress) envelope.recipient()).isUnresolved())) {
+            throw new UnresolvedAddressException();
+        }
     }
 
     @Override
     protected Object filterOutboundMessage(Object msg) {
         if (msg instanceof DatagramPacket) {
             DatagramPacket p = (DatagramPacket) msg;
+            checkUnresolved(p);
             ByteBuf content = p.content();
             if (isSingleDirectBuffer(content)) {
                 return p;
@@ -322,6 +328,7 @@ public final class NioDatagramChannel
         if (msg instanceof AddressedEnvelope) {
             @SuppressWarnings("unchecked")
             AddressedEnvelope<Object, SocketAddress> e = (AddressedEnvelope<Object, SocketAddress>) msg;
+            checkUnresolved(e);
             if (e.content() instanceof ByteBuf) {
                 ByteBuf content = (ByteBuf) e.content();
                 if (isSingleDirectBuffer(content)) {
@@ -368,15 +375,25 @@ public final class NioDatagramChannel
 
     @Override
     public ChannelFuture joinGroup(InetAddress multicastAddress, ChannelPromise promise) {
+        final NetworkInterface iface;
         try {
-            return joinGroup(
-                    multicastAddress,
-                    NetworkInterface.getByInetAddress(localAddress().getAddress()),
-                    null, promise);
+            iface = defaultMulticastInterface();
         } catch (SocketException e) {
-            promise.setFailure(e);
+            return promise.setFailure(e);
         }
-        return promise;
+        return joinGroup(multicastAddress, iface, null, promise);
+    }
+
+    /**
+     * Returns the interface to use when none was given: the one set via
+     * {@link io.netty.channel.ChannelOption#IP_MULTICAST_IF} or, if unset, the interface of the local address.
+     */
+    private NetworkInterface defaultMulticastInterface() throws SocketException {
+        NetworkInterface iface = config.getNetworkInterface();
+        if (iface == null) {
+            iface = NetworkInterface.getByInetAddress(localAddress().getAddress());
+        }
+        return iface;
     }
 
     @Override
@@ -447,8 +464,7 @@ public final class NioDatagramChannel
     @Override
     public ChannelFuture leaveGroup(InetAddress multicastAddress, ChannelPromise promise) {
         try {
-            return leaveGroup(
-                    multicastAddress, NetworkInterface.getByInetAddress(localAddress().getAddress()), null, promise);
+            return leaveGroup(multicastAddress, defaultMulticastInterface(), null, promise);
         } catch (SocketException e) {
             promise.setFailure(e);
         }
@@ -542,8 +558,8 @@ public final class NioDatagramChannel
                     if (networkInterface.equals(key.networkInterface())) {
                         try {
                             key.block(sourceToBlock);
-                        } catch (IOException e) {
-                            promise.setFailure(e);
+                        } catch (Throwable e) {
+                            return promise.setFailure(e);
                         }
                     }
                 }
@@ -569,15 +585,13 @@ public final class NioDatagramChannel
     @Override
     public ChannelFuture block(
             InetAddress multicastAddress, InetAddress sourceToBlock, ChannelPromise promise) {
+        final NetworkInterface iface;
         try {
-            return block(
-                    multicastAddress,
-                    NetworkInterface.getByInetAddress(localAddress().getAddress()),
-                    sourceToBlock, promise);
+            iface = defaultMulticastInterface();
         } catch (SocketException e) {
-            promise.setFailure(e);
+            return promise.setFailure(e);
         }
-        return promise;
+        return block(multicastAddress, iface, sourceToBlock, promise);
     }
 
     @Override

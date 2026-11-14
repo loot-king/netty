@@ -15,13 +15,14 @@
  */
 package io.netty.handler.codec;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.Calendar;
 import java.util.Date;
 
-import static org.junit.Assert.*;
 import static io.netty.handler.codec.DateFormatter.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 public class DateFormatterTest {
     /**
@@ -34,6 +35,14 @@ public class DateFormatterTest {
     @Test
     public void testParseWithSingleDigitDay() {
         assertEquals(DATE, parseHttpDate("Sun, 6 Nov 1994 08:49:37 GMT"));
+    }
+
+    @Test
+    public void testParseHttpDateSubstringDoesNotOverrunEnd() {
+        // Set-Cookie header format with the date anywhere but last (RFC 6265 tokens are unordered).
+        String dateText = "Sun 08:49:37 06 Nov 1994";
+        assertEquals(DATE, parseHttpDate(dateText));
+        assertEquals(DATE, parseHttpDate(dateText + "; Path=/", 0, dateText.length()));
     }
 
     @Test

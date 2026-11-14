@@ -15,19 +15,25 @@
 
 package io.netty.handler.codec.http2;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.fail;
+import io.netty.util.AsciiString;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class HpackDynamicTableTest {
+    private static final AsciiString FOO = AsciiString.cached("foo");
+    private static final AsciiString BAR = AsciiString.cached("bar");
+    private static final AsciiString HELLO = AsciiString.cached("hello");
+    private static final AsciiString WORLD = AsciiString.cached("world");
 
     @Test
     public void testLength() {
         HpackDynamicTable table = new HpackDynamicTable(100);
         assertEquals(0, table.length());
-        HpackHeaderField entry = new HpackHeaderField("foo", "bar");
+        HpackHeaderField entry = new HpackHeaderField(FOO, BAR);
         table.add(entry);
         assertEquals(1, table.length());
         table.clear();
@@ -35,10 +41,29 @@ public class HpackDynamicTableTest {
     }
 
     @Test
+    public void testFillToCapacityWithMinimumSizedEntries() {
+        // HEADER_ENTRY_OVERHEAD is 32, so an empty name/value entry has size 32. A capacity that is an exact
+        // multiple of 32 lets exactly capacity/32 such entries fit. The circular queue must keep all of them
+        // reachable instead of wrapping head onto tail and reporting an empty table.
+        for (int entries = 1; entries <= 4; entries++) {
+            HpackDynamicTable table = new HpackDynamicTable(32L * entries);
+            for (int i = 0; i < entries; i++) {
+                table.add(new HpackHeaderField(AsciiString.EMPTY_STRING, AsciiString.EMPTY_STRING));
+            }
+            assertEquals(entries, table.length());
+            assertEquals(32L * entries, table.size());
+            // the oldest entry must still be reachable at index length()
+            HpackHeaderField oldest = table.getEntry(entries);
+            assertEquals(0, oldest.name.length());
+            assertEquals(0, oldest.value.length());
+        }
+    }
+
+    @Test
     public void testSize() {
         HpackDynamicTable table = new HpackDynamicTable(100);
         assertEquals(0, table.size());
-        HpackHeaderField entry = new HpackHeaderField("foo", "bar");
+        HpackHeaderField entry = new HpackHeaderField(FOO, BAR);
         table.add(entry);
         assertEquals(entry.size(), table.size());
         table.clear();
@@ -47,31 +72,37 @@ public class HpackDynamicTableTest {
 
     @Test
     public void testGetEntry() {
-        HpackDynamicTable table = new HpackDynamicTable(100);
-        HpackHeaderField entry = new HpackHeaderField("foo", "bar");
+        final HpackDynamicTable table = new HpackDynamicTable(100);
+        HpackHeaderField entry = new HpackHeaderField(FOO, BAR);
         table.add(entry);
         assertEquals(entry, table.getEntry(1));
         table.clear();
-        try {
-            table.getEntry(1);
-            fail();
-        } catch (IndexOutOfBoundsException e) {
-            //success
-        }
+
+        assertThrows(IndexOutOfBoundsException.class, new Executable() {
+            @Override
+            public void execute() throws Throwable {
+                table.getEntry(1);
+            }
+        });
     }
 
-    @Test(expected = IndexOutOfBoundsException.class)
+    @Test
     public void testGetEntryExceptionally() {
-        HpackDynamicTable table = new HpackDynamicTable(1);
-        table.getEntry(1);
+        final HpackDynamicTable table = new HpackDynamicTable(1);
+        assertThrows(IndexOutOfBoundsException.class, new Executable() {
+            @Override
+            public void execute() throws Throwable {
+                table.getEntry(1);
+            }
+        });
     }
 
     @Test
     public void testRemove() {
         HpackDynamicTable table = new HpackDynamicTable(100);
         assertNull(table.remove());
-        HpackHeaderField entry1 = new HpackHeaderField("foo", "bar");
-        HpackHeaderField entry2 = new HpackHeaderField("hello", "world");
+        HpackHeaderField entry1 = new HpackHeaderField(FOO, BAR);
+        HpackHeaderField entry2 = new HpackHeaderField(HELLO, WORLD);
         table.add(entry1);
         table.add(entry2);
         assertEquals(entry1, table.remove());
@@ -82,8 +113,8 @@ public class HpackDynamicTableTest {
 
     @Test
     public void testSetCapacity() {
-        HpackHeaderField entry1 = new HpackHeaderField("foo", "bar");
-        HpackHeaderField entry2 = new HpackHeaderField("hello", "world");
+        HpackHeaderField entry1 = new HpackHeaderField(FOO, BAR);
+        HpackHeaderField entry2 = new HpackHeaderField(HELLO, WORLD);
         final int size1 = entry1.size();
         final int size2 = entry2.size();
         HpackDynamicTable table = new HpackDynamicTable(size1 + size2);
@@ -91,7 +122,7 @@ public class HpackDynamicTableTest {
         table.add(entry2);
         assertEquals(2, table.length());
         assertEquals(size1 + size2, table.size());
-        table.setCapacity((size1 + size2) * 2); //larger capacity
+        table.setCapacity(((long) size1 + size2) * 2); //larger capacity
         assertEquals(2, table.length());
         assertEquals(size1 + size2, table.size());
         table.setCapacity(size2); //smaller capacity
@@ -108,8 +139,8 @@ public class HpackDynamicTableTest {
     public void testAdd() {
         HpackDynamicTable table = new HpackDynamicTable(100);
         assertEquals(0, table.size());
-        HpackHeaderField entry1 = new HpackHeaderField("foo", "bar"); //size:3+3+32=38
-        HpackHeaderField entry2 = new HpackHeaderField("hello", "world");
+        HpackHeaderField entry1 = new HpackHeaderField(FOO, BAR); //size:3+3+32=38
+        HpackHeaderField entry2 = new HpackHeaderField(HELLO, WORLD);
         table.add(entry1); //success
         assertEquals(entry1.size(), table.size());
         table.setCapacity(32); //entry1 is removed from table

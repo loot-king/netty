@@ -15,19 +15,21 @@
  */
 package io.netty.buffer;
 
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 
 import java.nio.ByteOrder;
 
-import static org.junit.Assert.assertSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 public class PooledAlignedBigEndianDirectByteBufTest extends PooledBigEndianDirectByteBufTest {
     private static final int directMemoryCacheAlignment = 1;
     private static PooledByteBufAllocator allocator;
 
-    @BeforeClass
+    @BeforeAll
     public static void setUpAllocator() {
+        assumeTrue(PooledByteBufAllocator.isDirectMemoryCacheAlignmentSupported());
         allocator = new PooledByteBufAllocator(
                 true,
                 PooledByteBufAllocator.defaultNumHeapArena(),
@@ -40,7 +42,7 @@ public class PooledAlignedBigEndianDirectByteBufTest extends PooledBigEndianDire
                 directMemoryCacheAlignment);
     }
 
-    @AfterClass
+    @AfterAll
     public static void releaseAllocator() {
         allocator = null;
     }

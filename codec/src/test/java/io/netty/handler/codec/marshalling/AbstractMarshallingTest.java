@@ -16,20 +16,26 @@
 package io.netty.handler.codec.marshalling;
 
 import io.netty.util.internal.PlatformDependent;
+import org.jboss.marshalling.MarshallerFactory;
 import org.jboss.marshalling.Marshalling;
-import org.junit.Assume;
-import org.junit.BeforeClass;
+import org.jboss.marshalling.MarshallingConfiguration;
+import org.junit.jupiter.api.BeforeAll;
+
+import java.io.IOException;
+
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 public abstract class AbstractMarshallingTest {
 
     static final String SERIAL_FACTORY = "serial";
     static final String RIVER_FACTORY = "river";
 
-    @BeforeClass
+    @BeforeAll
     public static void checkSupported() throws Throwable {
         Throwable error = null;
         try {
-            Marshalling.getProvidedMarshallerFactory(SERIAL_FACTORY);
+            checkFactorySupported(Marshalling.getProvidedMarshallerFactory(SERIAL_FACTORY));
+            checkFactorySupported(Marshalling.getProvidedMarshallerFactory(RIVER_FACTORY));
         } catch (Throwable cause) {
             // This may fail on Java 9+ depending on which command-line arguments are used when building.
             if (PlatformDependent.javaVersion() < 9) {
@@ -37,6 +43,11 @@ public abstract class AbstractMarshallingTest {
             }
             error = cause;
         }
-        Assume.assumeNoException(error);
+        assumeTrue(error == null, error + " was not null");
+    }
+
+    private static void checkFactorySupported(MarshallerFactory factory) throws IOException {
+        factory.createMarshaller(new MarshallingConfiguration()).close();
+        factory.createUnmarshaller(new MarshallingConfiguration()).close();
     }
 }

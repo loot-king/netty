@@ -15,8 +15,8 @@
  */
 package io.netty.handler.codec.socks;
 
-import org.junit.Test;
-import static org.junit.Assert.assertTrue;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 public class SocksAuthResponseTest {
     @Test
@@ -24,7 +24,7 @@ public class SocksAuthResponseTest {
         try {
             new SocksAuthResponse(null);
         } catch (Exception e) {
-            assertTrue(e instanceof NullPointerException);
+            assertInstanceOf(NullPointerException.class, e);
         }
     }
 

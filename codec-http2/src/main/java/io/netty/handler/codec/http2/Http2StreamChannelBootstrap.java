@@ -28,7 +28,6 @@ import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.Promise;
 import io.netty.util.internal.ObjectUtil;
 import io.netty.util.internal.StringUtil;
-import io.netty.util.internal.UnstableApi;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
@@ -37,7 +36,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-@UnstableApi
 public final class Http2StreamChannelBootstrap {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(Http2StreamChannelBootstrap.class);
     @SuppressWarnings("unchecked")
@@ -63,7 +61,6 @@ public final class Http2StreamChannelBootstrap {
      * Allow to specify a {@link ChannelOption} which is used for the {@link Http2StreamChannel} instances once they got
      * created. Use a value of {@code null} to remove a previous set {@link ChannelOption}.
      */
-    @SuppressWarnings("unchecked")
     public <T> Http2StreamChannelBootstrap option(ChannelOption<T> option, T value) {
         ObjectUtil.checkNotNull(option, "option");
 
@@ -81,7 +78,6 @@ public final class Http2StreamChannelBootstrap {
      * Allow to specify an initial attribute of the newly created {@link Http2StreamChannel}.  If the {@code value} is
      * {@code null}, the attribute of the specified {@code key} is removed.
      */
-    @SuppressWarnings("unchecked")
     public <T> Http2StreamChannelBootstrap attr(AttributeKey<T> key, T value) {
         ObjectUtil.checkNotNull(key, "key");
         if (value == null) {
@@ -112,7 +108,6 @@ public final class Http2StreamChannelBootstrap {
      * Open a new {@link Http2StreamChannel} to use and notifies the given {@link Promise}.
      * @return the {@link Future} that will be notified once the channel was opened successfully or it failed.
      */
-    @SuppressWarnings("deprecation")
     public Future<Http2StreamChannel> open(final Promise<Http2StreamChannel> promise) {
         try {
             ChannelHandlerContext ctx = findCtx();
@@ -138,9 +133,10 @@ public final class Http2StreamChannelBootstrap {
         return promise;
     }
 
+    @SuppressWarnings("deprecation")
     private ChannelHandlerContext findCtx() throws ClosedChannelException {
         // First try to use cached context and if this not work lets try to lookup the context.
-        ChannelHandlerContext ctx = this.multiplexCtx;
+        ChannelHandlerContext ctx = multiplexCtx;
         if (ctx != null && !ctx.isRemoved()) {
             return ctx;
         }
@@ -158,7 +154,7 @@ public final class Http2StreamChannelBootstrap {
                 throw new ClosedChannelException();
             }
         }
-        this.multiplexCtx = ctx;
+        multiplexCtx = ctx;
         return ctx;
     }
 
@@ -239,11 +235,10 @@ public final class Http2StreamChannelBootstrap {
             @SuppressWarnings("unchecked")
             ChannelOption<Object> opt = (ChannelOption<Object>) option;
             if (!channel.config().setOption(opt, value)) {
-                logger.warn("Unknown channel option '{}' for channel '{}'", option, channel);
+                logger.warn("{} Unknown channel option '{}'", channel, option);
             }
         } catch (Throwable t) {
-            logger.warn(
-                    "Failed to set channel option '{}' with value '{}' for channel '{}'", option, value, channel, t);
+            logger.warn("{} Failed to set channel option '{}' with value '{}'", channel, option, value, t);
         }
     }
 

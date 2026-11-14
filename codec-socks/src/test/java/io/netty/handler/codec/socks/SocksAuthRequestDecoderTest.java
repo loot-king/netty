@@ -18,9 +18,11 @@ package io.netty.handler.codec.socks;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 public class SocksAuthRequestDecoderTest {
 
@@ -67,5 +69,22 @@ public class SocksAuthRequestDecoderTest {
         assertEquals(password, msg.password());
 
         assertFalse(ch.finishAndReleaseAll());
+    }
+
+    /**
+     * ULEN and PLEN are unsigned octets (RFC 1929); user names and passwords of 128 to 255 bytes must decode.
+     */
+    @Test
+    public void testAuthRequestDecoderLongUsernameAndPassword() {
+        String longUsername = SocksCommonTestUtils.asciiStringOfLength(128);
+        String longPassword = SocksCommonTestUtils.asciiStringOfLength(255);
+        SocksAuthRequest msg = new SocksAuthRequest(longUsername, longPassword);
+        EmbeddedChannel embedder = new EmbeddedChannel(new SocksAuthRequestDecoder());
+        SocksCommonTestUtils.writeMessageIntoEmbedder(embedder, msg);
+        msg = embedder.readInbound();
+        assertEquals(longUsername, msg.username());
+        assertEquals(longPassword, msg.password());
+        assertNull(embedder.readInbound());
+        assertFalse(embedder.finish());
     }
 }

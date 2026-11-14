@@ -26,18 +26,20 @@
 
 #define EVENT_ARRAY_CLASSNAME "io/netty/channel/kqueue/KQueueEventArray"
 
-static void netty_kqueue_eventarray_evSet(JNIEnv* env, jclass clzz, jlong keventAddress, jint ident, jshort filter, jshort flags, jint fflags) {
-    EV_SET((struct kevent*) keventAddress, ident, filter, flags, fflags, 0, NULL);
+static void netty_kqueue_eventarray_evSet(JNIEnv* env, jclass clzz, jlong keventAddress, jint ident, jshort filter, jshort flags, jint fflags, jlong data, jlong udata) {
+    EV_SET((struct kevent*) keventAddress, ident, filter, flags, fflags, data, (void *) udata);
 }
 
 // JNI Method Registration Table Begin
 static const JNINativeMethod fixed_method_table[] = {
-  { "evSet", "(JISSI)V", (void *) netty_kqueue_eventarray_evSet }
+  { "evSet", "(JISSIJJ)V", (void *) netty_kqueue_eventarray_evSet }
 };
 static const jint fixed_method_table_size = sizeof(fixed_method_table) / sizeof(fixed_method_table[0]);
 
 // JNI Method Registration Table End
 
+// IMPORTANT: If you add any NETTY_JNI_UTIL_LOAD_CLASS or NETTY_JNI_UTIL_FIND_CLASS calls you also need to update
+//            Native to reflect that.
 jint netty_kqueue_eventarray_JNI_OnLoad(JNIEnv* env, const char* packagePrefix) {
     if (netty_jni_util_register_natives(env,
             packagePrefix,

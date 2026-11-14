@@ -19,12 +19,16 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.util.CharsetUtil;
 import io.netty.util.ReferenceCountUtil;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 
 import static io.netty.buffer.Unpooled.*;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class LineBasedFrameDecoderTest {
     @Test
@@ -68,19 +72,20 @@ public class LineBasedFrameDecoderTest {
 
     @Test
     public void testTooLongLine1() throws Exception {
-        EmbeddedChannel ch = new EmbeddedChannel(new LineBasedFrameDecoder(16, false, false));
+        final EmbeddedChannel ch = new EmbeddedChannel(new LineBasedFrameDecoder(16, false, false));
 
-        try {
-            ch.writeInbound(copiedBuffer("12345678901234567890\r\nfirst\nsecond", CharsetUtil.US_ASCII));
-            fail();
-        } catch (Exception e) {
-            assertThat(e, is(instanceOf(TooLongFrameException.class)));
-        }
+        Exception e = assertThrows(Exception.class, new Executable() {
+            @Override
+            public void execute() throws Throwable {
+                ch.writeInbound(copiedBuffer("12345678901234567890\r\nfirst\nsecond", CharsetUtil.US_ASCII));
+            }
+        });
+        assertInstanceOf(TooLongFrameException.class, e);
 
         ByteBuf buf = ch.readInbound();
         ByteBuf buf2 = copiedBuffer("first\n", CharsetUtil.US_ASCII);
-        assertThat(buf, is(buf2));
-        assertThat(ch.finish(), is(false));
+        assertEquals(buf2, buf);
+        assertFalse(ch.finish());
 
         buf.release();
         buf2.release();
@@ -88,20 +93,21 @@ public class LineBasedFrameDecoderTest {
 
     @Test
     public void testTooLongLine2() throws Exception {
-        EmbeddedChannel ch = new EmbeddedChannel(new LineBasedFrameDecoder(16, false, false));
+        final EmbeddedChannel ch = new EmbeddedChannel(new LineBasedFrameDecoder(16, false, false));
 
         assertFalse(ch.writeInbound(copiedBuffer("12345678901234567", CharsetUtil.US_ASCII)));
-        try {
-            ch.writeInbound(copiedBuffer("890\r\nfirst\r\n", CharsetUtil.US_ASCII));
-            fail();
-        } catch (Exception e) {
-            assertThat(e, is(instanceOf(TooLongFrameException.class)));
-        }
+        Exception e = assertThrows(Exception.class, new Executable() {
+            @Override
+            public void execute() throws Throwable {
+                ch.writeInbound(copiedBuffer("890\r\nfirst\r\n", CharsetUtil.US_ASCII));
+            }
+        });
+        assertInstanceOf(TooLongFrameException.class, e);
 
         ByteBuf buf = ch.readInbound();
         ByteBuf buf2 = copiedBuffer("first\r\n", CharsetUtil.US_ASCII);
-        assertThat(buf, is(buf2));
-        assertThat(ch.finish(), is(false));
+        assertEquals(buf2, buf);
+        assertFalse(ch.finish());
 
         buf.release();
         buf2.release();
@@ -109,22 +115,23 @@ public class LineBasedFrameDecoderTest {
 
     @Test
     public void testTooLongLineWithFailFast() throws Exception {
-        EmbeddedChannel ch = new EmbeddedChannel(new LineBasedFrameDecoder(16, false, true));
+        final EmbeddedChannel ch = new EmbeddedChannel(new LineBasedFrameDecoder(16, false, true));
 
-        try {
-            ch.writeInbound(copiedBuffer("12345678901234567", CharsetUtil.US_ASCII));
-            fail();
-        } catch (Exception e) {
-            assertThat(e, is(instanceOf(TooLongFrameException.class)));
-        }
+        Exception e = assertThrows(Exception.class, new Executable() {
+            @Override
+            public void execute() throws Throwable {
+                ch.writeInbound(copiedBuffer("12345678901234567", CharsetUtil.US_ASCII));
+            }
+        });
+        assertInstanceOf(TooLongFrameException.class, e);
 
-        assertThat(ch.writeInbound(copiedBuffer("890", CharsetUtil.US_ASCII)), is(false));
-        assertThat(ch.writeInbound(copiedBuffer("123\r\nfirst\r\n", CharsetUtil.US_ASCII)), is(true));
+        assertFalse(ch.writeInbound(copiedBuffer("890", CharsetUtil.US_ASCII)));
+        assertTrue(ch.writeInbound(copiedBuffer("123\r\nfirst\r\n", CharsetUtil.US_ASCII)));
 
         ByteBuf buf = ch.readInbound();
         ByteBuf buf2 = copiedBuffer("first\r\n", CharsetUtil.US_ASCII);
-        assertThat(buf, is(buf2));
-        assertThat(ch.finish(), is(false));
+        assertEquals(buf2, buf);
+        assertFalse(ch.finish());
 
         buf.release();
         buf2.release();
@@ -189,15 +196,15 @@ public class LineBasedFrameDecoderTest {
 
     @Test
     public void testNotFailFast() throws Exception {
-        EmbeddedChannel ch = new EmbeddedChannel(new LineBasedFrameDecoder(2, false, false));
+        final EmbeddedChannel ch = new EmbeddedChannel(new LineBasedFrameDecoder(2, false, false));
         assertFalse(ch.writeInbound(wrappedBuffer(new byte[] { 0, 1, 2 })));
         assertFalse(ch.writeInbound(wrappedBuffer(new byte[]{ 3, 4 })));
-        try {
-            ch.writeInbound(wrappedBuffer(new byte[] { '\n' }));
-            fail();
-        } catch (TooLongFrameException expected) {
-            // Expected once we received a full frame.
-        }
+        assertThrows(TooLongFrameException.class, new Executable() {
+            @Override
+            public void execute() throws Throwable {
+                ch.writeInbound(wrappedBuffer(new byte[] { '\n' }));
+            }
+        });
         assertFalse(ch.writeInbound(wrappedBuffer(new byte[] { '5' })));
         assertTrue(ch.writeInbound(wrappedBuffer(new byte[] { '\n' })));
 

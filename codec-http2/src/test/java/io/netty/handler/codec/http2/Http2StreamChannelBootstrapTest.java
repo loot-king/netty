@@ -21,20 +21,18 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
-import io.netty.channel.DefaultEventLoop;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.local.LocalAddress;
 import io.netty.channel.local.LocalChannel;
+import io.netty.channel.local.LocalEventLoopGroup;
 import io.netty.channel.local.LocalServerChannel;
 import io.netty.util.concurrent.DefaultPromise;
 import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.concurrent.Promise;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
-import org.hamcrest.core.IsInstanceOf;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 
 import java.nio.channels.ClosedChannelException;
 import java.util.concurrent.CountDownLatch;
@@ -43,10 +41,10 @@ import java.util.concurrent.ExecutionException;
 import static io.netty.handler.codec.http2.Http2FrameCodecBuilder.forClient;
 import static io.netty.handler.codec.http2.Http2FrameCodecBuilder.forServer;
 import static java.util.concurrent.TimeUnit.SECONDS;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.instanceOf;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -54,9 +52,6 @@ public class Http2StreamChannelBootstrapTest {
 
     private static final InternalLogger logger =
             InternalLoggerFactory.getInstance(Http2StreamChannelBootstrapTest.class);
-
-    @Rule
-    public ExpectedException exceptionRule = ExpectedException.none();
 
     private volatile Channel serverConnectedChannel;
 
@@ -67,7 +62,7 @@ public class Http2StreamChannelBootstrapTest {
         Channel clientChannel = null;
         try {
             final CountDownLatch serverChannelLatch = new CountDownLatch(1);
-            group = new DefaultEventLoop();
+            group = new LocalEventLoopGroup(1);
             LocalAddress serverAddress = new LocalAddress(getClass().getName());
             ServerBootstrap sb = new ServerBootstrap()
                     .channel(LocalServerChannel.class)
@@ -109,14 +104,18 @@ public class Http2StreamChannelBootstrapTest {
             });
 
             Http2StreamChannelBootstrap bootstrap = new Http2StreamChannelBootstrap(clientChannel);
-            Promise<Http2StreamChannel> promise = clientChannel.eventLoop().newPromise();
+            final Promise<Http2StreamChannel> promise = clientChannel.eventLoop().newPromise();
             bootstrap.open(promise);
-            assertThat(promise.isDone(), is(false));
+            assertFalse(promise.isDone());
             closeLatch.countDown();
 
-            exceptionRule.expect(ExecutionException.class);
-            exceptionRule.expectCause(IsInstanceOf.<Throwable>instanceOf(ClosedChannelException.class));
-            promise.get(3, SECONDS);
+            ExecutionException exception = assertThrows(ExecutionException.class, new Executable() {
+                @Override
+                public void execute() throws Throwable {
+                    promise.get(3, SECONDS);
+                }
+            });
+            assertInstanceOf(ClosedChannelException.class, exception.getCause());
         } finally {
             safeClose(clientChannel);
             safeClose(serverConnectedChannel);
@@ -157,9 +156,9 @@ public class Http2StreamChannelBootstrapTest {
         when(ctx.executor()).thenReturn(executor);
         when(ctx.handler()).thenReturn(handler);
 
-        Promise<Http2StreamChannel> promise = new DefaultPromise(mock(EventExecutor.class));
+        Promise<Http2StreamChannel> promise = new DefaultPromise<Http2StreamChannel>(mock(EventExecutor.class));
         bootstrap.open0(ctx, promise);
-        assertThat(promise.isDone(), is(true));
-        assertThat(promise.cause(), is(instanceOf(IllegalStateException.class)));
+        assertTrue(promise.isDone());
+        assertInstanceOf(IllegalStateException.class, promise.cause());
     }
 }

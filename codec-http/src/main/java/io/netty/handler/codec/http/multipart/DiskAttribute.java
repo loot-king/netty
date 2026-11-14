@@ -95,9 +95,9 @@ public class DiskAttribute extends AbstractDiskHttpData implements Attribute {
     public DiskAttribute(String name, String value, Charset charset,
                          String baseDir, boolean deleteOnExit) throws IOException {
         super(name, charset, 0); // Attribute have no default size
-        setValue(value);
         this.baseDir = baseDir == null ? baseDirectory : baseDir;
         this.deleteOnExit = deleteOnExit;
+        setValue(value);
     }
 
     @Override
@@ -126,7 +126,12 @@ public class DiskAttribute extends AbstractDiskHttpData implements Attribute {
     @Override
     public void addContent(ByteBuf buffer, boolean last) throws IOException {
         final long newDefinedSize = size + buffer.readableBytes();
-        checkSize(newDefinedSize);
+        try {
+            checkSize(newDefinedSize);
+        } catch (IOException e) {
+            buffer.release();
+            throw e;
+        }
         if (definedSize > 0 && definedSize < newDefinedSize) {
             definedSize = newDefinedSize;
         }
@@ -237,6 +242,7 @@ public class DiskAttribute extends AbstractDiskHttpData implements Attribute {
                 throw new ChannelException(e);
             }
         }
+        attr.setCompleted(isCompleted());
         return attr;
     }
 

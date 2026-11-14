@@ -16,7 +16,8 @@ package io.netty.handler.codec;
 
 import io.netty.util.AsciiString;
 import io.netty.util.HashingStrategy;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -27,16 +28,14 @@ import java.util.NoSuchElementException;
 
 import static io.netty.util.AsciiString.of;
 import static java.util.Arrays.asList;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.hamcrest.Matchers.hasSize;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotSame;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for {@link DefaultHeaders}.
@@ -165,13 +164,18 @@ public class DefaultHeadersTest {
         assertFalse(itr.hasNext());
     }
 
-    @Test(expected = IllegalStateException.class)
+    @Test
     public void valuesItrRemoveThrowsWhenEmpty() {
         TestDefaultHeaders headers = newInstance();
         assertEquals(0, headers.size());
         assertTrue(headers.isEmpty());
-        Iterator<CharSequence> itr = headers.valueIterator(of("name"));
-        itr.remove();
+        final Iterator<CharSequence> itr = headers.valueIterator(of("name"));
+        assertThrows(IllegalStateException.class, new Executable() {
+            @Override
+            public void execute() {
+                itr.remove();
+            }
+        });
     }
 
     @Test
@@ -181,7 +185,7 @@ public class DefaultHeadersTest {
         assertEquals(1, headers.size());
 
         List<CharSequence> values = new ArrayList<CharSequence>();
-        Iterator<CharSequence> itr = headers.valueIterator(of("name"));
+        final Iterator<CharSequence> itr = headers.valueIterator(of("name"));
         while (itr.hasNext()) {
             values.add(itr.next());
             itr.remove();
@@ -190,12 +194,12 @@ public class DefaultHeadersTest {
         assertEquals(0, headers.size());
         assertTrue(headers.isEmpty());
         assertTrue(values.contains(of("value1")));
-        try {
-            itr.remove();
-            fail();
-        } catch (IllegalStateException ignored) {
-            // ignored
-        }
+        assertThrows(IllegalStateException.class, new Executable() {
+            @Override
+            public void execute() throws Throwable {
+                itr.remove();
+            }
+        });
     }
 
     @Test
@@ -203,17 +207,17 @@ public class DefaultHeadersTest {
         TestDefaultHeaders headers = newInstance();
 
         List<CharSequence> values = new ArrayList<CharSequence>();
-        Iterator<CharSequence> itr = headers.valueIterator(of("name"));
+        final Iterator<CharSequence> itr = headers.valueIterator(of("name"));
         while (itr.hasNext()) {
             values.add(itr.next());
         }
         assertEquals(0, values.size());
-        try {
-            itr.next();
-            fail();
-        } catch (NoSuchElementException ignored) {
-            // ignored
-        }
+        assertThrows(NoSuchElementException.class, new Executable() {
+            @Override
+            public void execute() throws Throwable {
+                itr.next();
+            }
+        });
     }
 
     @Test
@@ -462,11 +466,16 @@ public class DefaultHeadersTest {
         assertEquals(h2, h2);
     }
 
-    @Test(expected = NoSuchElementException.class)
+    @Test
     public void iterateEmptyHeadersShouldThrow() {
-        Iterator<Map.Entry<CharSequence, CharSequence>> iterator = newInstance().iterator();
+        final Iterator<Map.Entry<CharSequence, CharSequence>> iterator = newInstance().iterator();
         assertFalse(iterator.hasNext());
-        iterator.next();
+        assertThrows(NoSuchElementException.class, new Executable() {
+            @Override
+            public void execute() {
+                iterator.next();
+            }
+        });
     }
 
     @Test
@@ -569,10 +578,15 @@ public class DefaultHeadersTest {
         assertEquals(headers1, expected);
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testAddSelf() {
-        TestDefaultHeaders headers = newInstance();
-        headers.add(headers);
+        final TestDefaultHeaders headers = newInstance();
+        assertThrows(IllegalArgumentException.class, new Executable() {
+            @Override
+            public void execute() {
+                headers.add(headers);
+            }
+        });
     }
 
     @Test
@@ -788,8 +802,8 @@ public class DefaultHeadersTest {
         simulateCookieSplitting(headers);
         List<CharSequence> cookies = headers.getAll("Cookie");
 
-        assertThat(cookies, hasSize(3));
-        assertThat(cookies, containsInAnyOrder((CharSequence) "a=b", "c=d", "e=f"));
+        assertEquals(3, cookies.size());
+        assertThat(cookies).contains((CharSequence) "a=b", "c=d", "e=f");
     }
 
     /**

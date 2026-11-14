@@ -26,28 +26,32 @@ import io.netty.channel.local.LocalAddress;
 import io.netty.channel.local.LocalChannel;
 import io.netty.channel.local.LocalEventLoopGroup;
 import io.netty.channel.local.LocalServerChannel;
+import io.netty.handler.ssl.util.CachedSelfSignedCertificate;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.FutureListener;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 public abstract class RenegotiateTest {
 
-    @Test(timeout = 30000)
+    @Test
+    @Timeout(value = 30000, unit = TimeUnit.MILLISECONDS)
     public void testRenegotiateServer() throws Throwable {
         final AtomicReference<Throwable> error = new AtomicReference<Throwable>();
         final CountDownLatch latch = new CountDownLatch(2);
-        SelfSignedCertificate cert = new SelfSignedCertificate();
+        SelfSignedCertificate cert = CachedSelfSignedCertificate.getCachedCertificate();
         EventLoopGroup group = new LocalEventLoopGroup();
         try {
             final SslContext context = SslContextBuilder.forServer(cert.key(), cert.cert())
                     .sslProvider(serverSslProvider())
-                    .protocols(SslUtils.PROTOCOL_TLS_V1_2)
+                    .protocols(SslProtocols.TLS_v1_2)
                     .build();
 
             ServerBootstrap sb = new ServerBootstrap();
@@ -97,12 +101,12 @@ public abstract class RenegotiateTest {
                             });
                         }
                     });
-            Channel channel = sb.bind(new LocalAddress("test")).syncUninterruptibly().channel();
+            Channel channel = sb.bind(new LocalAddress(getClass())).syncUninterruptibly().channel();
 
             final SslContext clientContext = SslContextBuilder.forClient()
                     .trustManager(InsecureTrustManagerFactory.INSTANCE)
                     .sslProvider(SslProvider.JDK)
-                    .protocols(SslUtils.PROTOCOL_TLS_V1_2)
+                    .protocols(SslProtocols.TLS_v1_2)
                     .build();
 
             Bootstrap bootstrap = new Bootstrap();

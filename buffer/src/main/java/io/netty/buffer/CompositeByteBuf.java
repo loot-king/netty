@@ -374,8 +374,12 @@ public class CompositeByteBuf extends AbstractReferenceCountedByteBuf implements
 
         int readableBytes = 0;
         int capacity = capacity();
-        for (int i = 0; i < buffers.length; i++) {
-            readableBytes += buffers[i].readableBytes();
+        for (int i = arrOffset; i < buffers.length; i++) {
+            ByteBuf b = buffers[i];
+            if (b == null) {
+                break;
+            }
+            readableBytes += b.readableBytes();
 
             // Check if we would overflow.
             // See https://github.com/netty/netty/issues/10194
@@ -726,7 +730,10 @@ public class CompositeByteBuf extends AbstractReferenceCountedByteBuf implements
         // The first component
         Component firstC = components[componentId];
 
-        ByteBuf slice = firstC.buf.slice(firstC.idx(offset), Math.min(firstC.endOffset - offset, bytesToSlice));
+        // It's important to use srcBuf and NOT buf as we need to return the "original" source buffer and not the
+        // unwrapped one as otherwise we could loose the ability to correctly update the reference count on the
+        // returned buffer.
+        ByteBuf slice = firstC.srcBuf.slice(firstC.srcIdx(offset), Math.min(firstC.endOffset - offset, bytesToSlice));
         bytesToSlice -= slice.readableBytes();
 
         if (bytesToSlice == 0) {
@@ -739,7 +746,11 @@ public class CompositeByteBuf extends AbstractReferenceCountedByteBuf implements
         // Add all the slices until there is nothing more left and then return the List.
         do {
             Component component = components[++componentId];
-            slice = component.buf.slice(component.idx(component.offset), Math.min(component.length(), bytesToSlice));
+            // It's important to use srcBuf and NOT buf as we need to return the "original" source buffer and not the
+            // unwrapped one as otherwise we could loose the ability to correctly update the reference count on the
+            // returned buffer.
+            slice = component.srcBuf.slice(component.srcIdx(component.offset),
+                    Math.min(component.length(), bytesToSlice));
             bytesToSlice -= slice.readableBytes();
             sliceList.add(slice);
         } while (bytesToSlice > 0);
@@ -1709,7 +1720,7 @@ public class CompositeByteBuf extends AbstractReferenceCountedByteBuf implements
                 i ++;
             }
 
-            return buffers.toArray(new ByteBuffer[0]);
+            return buffers.toArray(EmptyArrays.EMPTY_BYTE_BUFFERS);
         } finally {
             buffers.recycle();
         }
@@ -2348,5 +2359,18 @@ public class CompositeByteBuf extends AbstractReferenceCountedByteBuf implements
             System.arraycopy(components, i, components, i + count, size - i);
         }
         componentCount = newSize;
+    }
+
+    /**
+     * Decreases the reference count by the specified {@code decrement} and deallocates this object if the reference
+     * count reaches at {@code 0}. At this point it will also decrement the reference count of each internal
+     * component by {@code 1}.
+     *
+     * @param decrement the number by which the reference count should be decreased
+     * @return {@code true} if and only if the reference count became {@code 0} and this object has been deallocated
+     */
+    @Override
+    public boolean release(final int decrement) {
+        return super.release(decrement);
     }
 }

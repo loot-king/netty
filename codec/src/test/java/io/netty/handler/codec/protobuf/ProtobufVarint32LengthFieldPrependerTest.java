@@ -17,19 +17,19 @@ package io.netty.handler.codec.protobuf;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.embedded.EmbeddedChannel;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import static io.netty.buffer.Unpooled.*;
-import static org.hamcrest.core.Is.*;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ProtobufVarint32LengthFieldPrependerTest {
 
     private EmbeddedChannel ch;
 
-    @Before
+    @BeforeEach
     public void setUp() {
         ch = new EmbeddedChannel(new ProtobufVarint32LengthFieldPrepender());
     }
@@ -38,7 +38,7 @@ public class ProtobufVarint32LengthFieldPrependerTest {
     public void testSize1Varint() {
         final int size = 1;
         final int num = 10;
-        assertThat(ProtobufVarint32LengthFieldPrepender.computeRawVarint32Size(num), is(size));
+        assertEquals(size, ProtobufVarint32LengthFieldPrepender.computeRawVarint32Size(num));
         final byte[] buf = new byte[size + num];
         //0000 1010
         buf[0] = 0x0A;
@@ -50,7 +50,7 @@ public class ProtobufVarint32LengthFieldPrependerTest {
         ByteBuf expected = wrappedBuffer(buf);
         ByteBuf actual = ch.readOutbound();
 
-        assertThat(expected, is(actual));
+        assertEquals(expected, actual);
         assertFalse(ch.finish());
 
         expected.release();
@@ -61,7 +61,7 @@ public class ProtobufVarint32LengthFieldPrependerTest {
     public void testSize2Varint() {
         final int size = 2;
         final int num = 266;
-        assertThat(ProtobufVarint32LengthFieldPrepender.computeRawVarint32Size(num), is(size));
+        assertEquals(size, ProtobufVarint32LengthFieldPrepender.computeRawVarint32Size(num));
         final byte[] buf = new byte[size + num];
         /**
          * 8    A    0    2
@@ -85,7 +85,7 @@ public class ProtobufVarint32LengthFieldPrependerTest {
         ByteBuf expected = wrappedBuffer(buf);
         ByteBuf actual = ch.readOutbound();
 
-        assertThat(actual, is(expected));
+        assertEquals(actual, expected);
         assertFalse(ch.finish());
 
         expected.release();
@@ -96,7 +96,7 @@ public class ProtobufVarint32LengthFieldPrependerTest {
     public void testSize3Varint() {
         final int size = 3;
         final int num = 0x4000;
-        assertThat(ProtobufVarint32LengthFieldPrepender.computeRawVarint32Size(num), is(size));
+        assertEquals(size, ProtobufVarint32LengthFieldPrepender.computeRawVarint32Size(num));
         final byte[] buf = new byte[size + num];
         /**
          * 8    0    8    0    0    1
@@ -121,7 +121,7 @@ public class ProtobufVarint32LengthFieldPrependerTest {
         ByteBuf expected = wrappedBuffer(buf);
         ByteBuf actual = ch.readOutbound();
 
-        assertThat(expected, is(actual));
+        assertEquals(expected, actual);
         assertFalse(ch.finish());
 
         expected.release();
@@ -132,7 +132,7 @@ public class ProtobufVarint32LengthFieldPrependerTest {
     public void testSize4Varint() {
         final int size = 4;
         final int num = 0x200000;
-        assertThat(ProtobufVarint32LengthFieldPrepender.computeRawVarint32Size(num), is(size));
+        assertEquals(size, ProtobufVarint32LengthFieldPrepender.computeRawVarint32Size(num));
         final byte[] buf = new byte[size + num];
         /**
          * 8    0    8    0    8    0    0    1
@@ -158,7 +158,7 @@ public class ProtobufVarint32LengthFieldPrependerTest {
         ByteBuf expected = wrappedBuffer(buf);
         ByteBuf actual = ch.readOutbound();
 
-        assertThat(actual, is(expected));
+        assertEquals(expected, actual);
         assertFalse(ch.finish());
 
         expected.release();
@@ -173,7 +173,7 @@ public class ProtobufVarint32LengthFieldPrependerTest {
         ByteBuf expected = wrappedBuffer(b);
         ByteBuf actual = ch.readOutbound();
 
-        assertThat(actual, is(expected));
+        assertEquals(expected, actual);
         assertFalse(ch.finish());
 
         expected.release();
@@ -193,7 +193,7 @@ public class ProtobufVarint32LengthFieldPrependerTest {
         ByteBuf expected = wrappedBuffer(b);
         ByteBuf actual = ch.readOutbound();
 
-        assertThat(actual, is(expected));
+        assertEquals(expected, actual);
         assertFalse(ch.finish());
 
         expected.release();

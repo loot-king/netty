@@ -45,7 +45,7 @@ public final class ServerCookieDecoder extends CookieDecoder {
     private static final String RFC2965_PORT = "$Port";
 
     /**
-     * Strict encoder that validates that name and value chars are in the valid scope
+     * Strict decoder that validates that name and value chars are in the valid scope
      * defined in RFC6265
      */
     public static final ServerCookieDecoder STRICT = new ServerCookieDecoder(true);
@@ -60,8 +60,8 @@ public final class ServerCookieDecoder extends CookieDecoder {
     }
 
     /**
-     * Decodes the specified Set-Cookie HTTP header value into a {@link Cookie}.  Unlike {@link #decode(String)}, this
-     * includes all cookie values present, even if they have the same name.
+     * Decodes the specified {@code Cookie} HTTP header value into a {@link Cookie}. Unlike {@link #decode(String)},
+     * this includes all cookie values present, even if they have the same name.
      *
      * @return the decoded {@link Cookie}
      */
@@ -72,7 +72,7 @@ public final class ServerCookieDecoder extends CookieDecoder {
     }
 
     /**
-     * Decodes the specified Set-Cookie HTTP header value into a {@link Cookie}.
+     * Decodes the specified {@code Cookie} HTTP header value into a {@link Cookie}.
      *
      * @return the decoded {@link Cookie}
      */
@@ -83,9 +83,7 @@ public final class ServerCookieDecoder extends CookieDecoder {
     }
 
     /**
-     * Decodes the specified Set-Cookie HTTP header value into a {@link Cookie}.
-     *
-     * @return the decoded {@link Cookie}
+     * Decodes the specified {@code Cookie} HTTP header value into a {@link Cookie}.
      */
     private void decode(Collection<? super Cookie> cookies, String header) {
         final int headerLen = checkNotNull(header, "header").length();

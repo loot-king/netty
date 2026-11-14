@@ -27,13 +27,14 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.local.LocalAddress;
 import io.netty.channel.local.LocalChannel;
 import io.netty.channel.local.LocalServerChannel;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class HAProxyIntegrationTest {
 
@@ -41,7 +42,7 @@ public class HAProxyIntegrationTest {
     public void testBasicCase() throws Exception {
         final CountDownLatch latch = new CountDownLatch(1);
         final AtomicReference<HAProxyMessage> msgHolder = new AtomicReference<HAProxyMessage>();
-        LocalAddress localAddress = new LocalAddress("HAProxyIntegrationTest");
+        LocalAddress localAddress = new LocalAddress(HAProxyIntegrationTest.class);
 
         EventLoopGroup group = new DefaultEventLoopGroup();
         ServerBootstrap sb = new ServerBootstrap();

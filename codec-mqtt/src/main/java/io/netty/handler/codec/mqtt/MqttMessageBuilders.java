@@ -356,7 +356,7 @@ public final class MqttMessageBuilders {
         private Long maximumPacketSize;
         private int topicAliasMaximum;
         private String reasonString;
-        private MqttProperties.UserProperties userProperties = new MqttProperties.UserProperties();
+        private final MqttProperties.UserProperties userProperties = new MqttProperties.UserProperties();
         private Boolean wildcardSubscriptionAvailable;
         private Boolean subscriptionIdentifiersAvailable;
         private Boolean sharedSubscriptionAvailable;
@@ -380,7 +380,8 @@ public final class MqttMessageBuilders {
                 props.add(new MqttProperties.IntegerProperty(MqttPropertyType.RECEIVE_MAXIMUM.value(), receiveMaximum));
             }
             if (maximumQos != null) {
-                props.add(new MqttProperties.IntegerProperty(MqttPropertyType.MAXIMUM_QOS.value(), receiveMaximum));
+                props.add(new MqttProperties.IntegerProperty(MqttPropertyType.MAXIMUM_QOS.value(),
+                        maximumQos.intValue()));
             }
             props.add(new MqttProperties.IntegerProperty(MqttPropertyType.RETAIN_AVAILABLE.value(), retain ? 1 : 0));
             if (maximumPacketSize != null) {

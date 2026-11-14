@@ -18,9 +18,12 @@ package io.netty.handler.codec.socksx.v5;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.DecoderResult;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class Socks5InitialRequestDecoderTest {
     @Test
@@ -30,7 +33,7 @@ public class Socks5InitialRequestDecoderTest {
         assertTrue(e.writeInbound(Unpooled.wrappedBuffer(new byte[]{1})));
         Object o = e.readInbound();
 
-        assertTrue(o instanceof DefaultSocks5InitialRequest);
+        assertInstanceOf(DefaultSocks5InitialRequest.class, o);
         DefaultSocks5InitialRequest req = (DefaultSocks5InitialRequest) o;
         assertSame(req.decoderResult(), DecoderResult.SUCCESS);
         assertFalse(e.finish());

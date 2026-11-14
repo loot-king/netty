@@ -17,7 +17,10 @@ package io.netty.testsuite.transport.socket;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.socket.DatagramChannel;
@@ -25,9 +28,10 @@ import io.netty.channel.socket.DatagramPacket;
 import io.netty.channel.socket.InternetProtocolFamily;
 import io.netty.channel.socket.oio.OioDatagramChannel;
 import io.netty.testsuite.transport.TestsuitePermutation;
+import io.netty.util.NetUtil;
 import io.netty.util.internal.SocketUtils;
-import org.junit.Assume;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -40,19 +44,29 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 public class DatagramMulticastTest extends AbstractDatagramTest {
 
     @Test
-    public void testMulticast() throws Throwable {
-        run();
+    public void testMulticast(TestInfo testInfo) throws Throwable {
+        run(testInfo, new Runner<Bootstrap, Bootstrap>() {
+            @Override
+            public void run(Bootstrap bootstrap, Bootstrap bootstrap2) throws Throwable {
+                testMulticast(bootstrap, bootstrap2);
+            }
+        });
     }
 
     public void testMulticast(Bootstrap sb, Bootstrap cb) throws Throwable {
         NetworkInterface iface = multicastNetworkInterface();
-        Assume.assumeNotNull("No NetworkInterface found that supports multicast and " +
-                             socketInternetProtocalFamily(), iface);
+        assumeTrue(iface != null, "No NetworkInterface found that supports multicast and " +
+                             socketInternetProtocalFamily());
 
         MulticastTestHandler mhandler = new MulticastTestHandler();
 
@@ -60,6 +74,11 @@ public class DatagramMulticastTest extends AbstractDatagramTest {
             @Override
             public void channelRead0(ChannelHandlerContext ctx, Object msg) throws Exception {
                 // Nothing will be sent.
+            }
+
+            @Override
+            public boolean isSharable() {
+                return true;
             }
         });
 
@@ -71,25 +90,34 @@ public class DatagramMulticastTest extends AbstractDatagramTest {
         cb.option(ChannelOption.IP_MULTICAST_IF, iface);
         cb.option(ChannelOption.SO_REUSEADDR, true);
 
-        DatagramChannel sc = (DatagramChannel) sb.bind(newSocketAddress(iface)).sync().channel();
-        assertEquals(iface, sc.config().getNetworkInterface());
-        assertInterfaceAddress(iface, sc.config().getInterface());
+        DatagramChannel sc = null;
 
-        InetSocketAddress addr = sc.localAddress();
-        cb.localAddress(addr.getPort());
+        int attempts = 5;
+        ChannelFuture clientFuture;
+        do {
+            if (sc != null) {
+                sc.close().sync();
+            }
+            sc = (DatagramChannel) sb.bind(newSocketAddress(iface)).sync().channel();
+            if (sc instanceof OioDatagramChannel) {
+                // skip the test for OIO, as it fails because of
+                // No route to host which makes no sense.
+                // Maybe a JDK bug ?
+                sc.close().awaitUninterruptibly();
+                return;
+            }
+            assertEquals(iface, sc.config().getNetworkInterface());
+            assertInterfaceAddress(iface, sc.config().getInterface());
 
-        if (sc instanceof OioDatagramChannel) {
-            // skip the test for OIO, as it fails because of
-            // No route to host which makes no sense.
-            // Maybe a JDK bug ?
-            sc.close().awaitUninterruptibly();
-            return;
-        }
-        DatagramChannel cc = (DatagramChannel) cb.bind().sync().channel();
+            InetSocketAddress addr = sc.localAddress();
+            cb.localAddress(addr.getPort());
+            clientFuture = cb.bind().await();
+        } while (!clientFuture.isSuccess() && --attempts > 0);
+        DatagramChannel cc = (DatagramChannel) clientFuture.sync().channel();
         assertEquals(iface, cc.config().getNetworkInterface());
         assertInterfaceAddress(iface, cc.config().getInterface());
 
-        InetSocketAddress groupAddress = SocketUtils.socketAddress(groupAddress(), addr.getPort());
+        InetSocketAddress groupAddress = SocketUtils.socketAddress(groupAddress(), sc.localAddress().getPort());
 
         cc.joinGroup(groupAddress, iface).sync();
 
@@ -122,6 +150,49 @@ public class DatagramMulticastTest extends AbstractDatagramTest {
         cc.close().awaitUninterruptibly();
     }
 
+    @Test
+    public void testMulticastWithWildcardLocalAddress(TestInfo testInfo) throws Throwable {
+        run(testInfo, new Runner<Bootstrap, Bootstrap>() {
+            @Override
+            public void run(Bootstrap bootstrap, Bootstrap bootstrap2) throws Throwable {
+                testMulticastWithWildcardLocalAddress(bootstrap, bootstrap2);
+            }
+        });
+    }
+
+    public void testMulticastWithWildcardLocalAddress(Bootstrap sb, Bootstrap cb) throws Throwable {
+        NetworkInterface iface = multicastNetworkInterface();
+        assumeTrue(iface != null, "No NetworkInterface found that supports multicast and " +
+                             socketInternetProtocalFamily());
+
+        cb.handler(new ChannelInboundHandlerAdapter());
+        cb.option(ChannelOption.IP_MULTICAST_IF, iface);
+        cb.option(ChannelOption.SO_REUSEADDR, true);
+
+        // Bound to the wildcard address, so the interface can't be derived from the local address and the
+        // methods without a NetworkInterface argument have to use IP_MULTICAST_IF.
+        DatagramChannel cc = (DatagramChannel) cb.bind(newAnySocketAddress()).sync().channel();
+        try {
+            if (cc instanceof OioDatagramChannel) {
+                // OIO delegates to MulticastSocket, which uses its own default interface.
+                return;
+            }
+            InetAddress groupAddress = InetAddress.getByName(groupAddress());
+
+            cc.joinGroup(groupAddress).sync();
+
+            ChannelFuture blockFuture = cc.block(groupAddress, sourceAddress()).await();
+            if (!blockFuture.isSuccess()) {
+                // Source filtering is not supported by all transports.
+                assertInstanceOf(UnsupportedOperationException.class, blockFuture.cause());
+            }
+
+            cc.leaveGroup(groupAddress).sync();
+        } finally {
+            cc.close().awaitUninterruptibly();
+        }
+    }
+
     private static void assertInterfaceAddress(NetworkInterface networkInterface, InetAddress expected) {
         Enumeration<InetAddress> addresses = networkInterface.getInetAddresses();
         while (addresses.hasMoreElements()) {
@@ -132,6 +203,7 @@ public class DatagramMulticastTest extends AbstractDatagramTest {
         fail();
     }
 
+    @ChannelHandler.Sharable
     private static final class MulticastTestHandler extends SimpleChannelInboundHandler<DatagramPacket> {
         private final CountDownLatch latch = new CountDownLatch(1);
 
@@ -190,9 +262,7 @@ public class DatagramMulticastTest extends AbstractDatagramTest {
     }
 
     private NetworkInterface multicastNetworkInterface() throws IOException {
-        Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
-        while (interfaces.hasMoreElements()) {
-            NetworkInterface iface = interfaces.nextElement();
+        for (NetworkInterface iface : NetUtil.NETWORK_INTERFACES) {
             if (iface.isUp() && iface.supportsMulticast()) {
                 Enumeration<InetAddress> addresses = iface.getInetAddresses();
                 while (addresses.hasMoreElements()) {
@@ -215,6 +285,11 @@ public class DatagramMulticastTest extends AbstractDatagramTest {
             }
         }
         return null;
+    }
+
+    private InetAddress sourceAddress() throws UnknownHostException {
+        return InetAddress.getByName(groupInternetProtocalFamily() == InternetProtocolFamily.IPv4?
+                "192.0.2.1" : "2001:db8::1");
     }
 
     private String groupAddress() {

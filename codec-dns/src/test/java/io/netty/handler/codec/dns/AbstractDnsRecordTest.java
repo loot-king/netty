@@ -15,8 +15,11 @@
  */
 package io.netty.handler.codec.dns;
 
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class AbstractDnsRecordTest {
 
@@ -24,39 +27,61 @@ public class AbstractDnsRecordTest {
     public void testValidDomainName() {
         String name = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
         AbstractDnsRecord record = new AbstractDnsRecord(name, DnsRecordType.A, 0) { };
-        Assert.assertEquals(name + '.', record.name());
+        assertEquals(name + '.', record.name());
     }
 
     @Test
     public void testValidDomainNameUmlaut() {
         String name = "ä";
         AbstractDnsRecord record = new AbstractDnsRecord(name, DnsRecordType.A, 0) { };
-        Assert.assertEquals("xn--4ca.", record.name());
+        assertEquals("xn--4ca.", record.name());
     }
 
     @Test
     public void testValidDomainNameTrailingDot() {
         String name = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.";
         AbstractDnsRecord record = new AbstractDnsRecord(name, DnsRecordType.A, 0) { };
-        Assert.assertEquals(name, record.name());
+        assertEquals(name, record.name());
     }
 
     @Test
     public void testValidDomainNameUmlautTrailingDot() {
         String name = "ä.";
         AbstractDnsRecord record = new AbstractDnsRecord(name, DnsRecordType.A, 0) { };
-        Assert.assertEquals("xn--4ca.", record.name());
+        assertEquals("xn--4ca.", record.name());
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testValidDomainNameLength() {
-        String name = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-        new AbstractDnsRecord(name, DnsRecordType.A, 0) { };
+        final String name = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        assertThrows(IllegalArgumentException.class, new Executable() {
+            @Override
+            public void execute() {
+                new AbstractDnsRecord(name, DnsRecordType.A, 0) { };
+            }
+        });
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testValidDomainNameUmlautLength() {
-        String name = "äaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-        new AbstractDnsRecord(name, DnsRecordType.A, 0) { };
+        final String name = "äaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        assertThrows(IllegalArgumentException.class, new Executable() {
+            @Override
+            public void execute() {
+                new AbstractDnsRecord(name, DnsRecordType.A, 0) { };
+            }
+        });
+    }
+
+    /*
+     * RFC-1034 Section 3.1 (page 7 & 8)
+     * RFC-1035 Section 2.3.3 (page 9 & 10)
+     */
+    @Test
+    public void testEqualsAndHashCodeIgnoreCase() {
+        AbstractDnsRecord lowerCase = new AbstractDnsRecord("example.com.", DnsRecordType.A, 0) { };
+        AbstractDnsRecord upperCase = new AbstractDnsRecord("EXAMPLE.COM.", DnsRecordType.A, 0) { };
+        assertEquals(lowerCase.hashCode(), upperCase.hashCode());
+        assertEquals(lowerCase, upperCase);
     }
 }

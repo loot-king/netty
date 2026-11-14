@@ -15,12 +15,9 @@
 
 package io.netty.handler.codec.http2;
 
-import io.netty.util.internal.UnstableApi;
-
 /**
  * All error codes identified by the HTTP/2 spec.
  */
-@UnstableApi
 public enum Http2Error {
     NO_ERROR(0x0),
     PROTOCOL_ERROR(0x1),
@@ -40,7 +37,7 @@ public enum Http2Error {
     private final long code;
     private static final Http2Error[] INT_TO_ENUM_MAP;
     static {
-        Http2Error[] errors = Http2Error.values();
+        Http2Error[] errors = values();
         Http2Error[] map = new Http2Error[errors.length];
         for (Http2Error error : errors) {
             map[(int) error.code()] = error;

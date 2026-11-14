@@ -15,9 +15,14 @@
  */
 package io.netty.util;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class AttributeKeyTest {
 
@@ -43,17 +48,17 @@ public class AttributeKeyTest {
 
     @Test
     public void testNewInstance() {
-        String name = "test2";
+        final String name = "test2";
         assertFalse(AttributeKey.exists(name));
         AttributeKey<String> attr = AttributeKey.newInstance(name);
         assertTrue(AttributeKey.exists(name));
         assertNotNull(attr);
 
-        try {
-            AttributeKey.<String>newInstance(name);
-            fail();
-        } catch (IllegalArgumentException e) {
-            // expected
-        }
+        assertThrows(IllegalArgumentException.class, new Executable() {
+            @Override
+            public void execute() throws Throwable {
+                AttributeKey.<String>newInstance(name);
+            }
+        });
     }
 }

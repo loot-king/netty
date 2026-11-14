@@ -27,9 +27,9 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.socket.DatagramPacket;
 import io.netty.channel.socket.InternetProtocolFamily;
 import io.netty.testsuite.transport.TestsuitePermutation;
-import io.netty.testsuite.transport.socket.DatagramUnicastTest;
-import org.junit.Assume;
-import org.junit.Test;
+import io.netty.testsuite.transport.socket.DatagramUnicastInetTest;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 
 import java.net.InetSocketAddress;
 import java.util.List;
@@ -37,10 +37,11 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-public class EpollDatagramUnicastTest extends DatagramUnicastTest {
+public class EpollDatagramUnicastTest extends DatagramUnicastInetTest {
     @Override
     protected List<TestsuitePermutation.BootstrapComboFactory<Bootstrap, Bootstrap>> newFactories() {
         return EpollSocketTestPermutation.INSTANCE.datagram(InternetProtocolFamily.IPv4);
@@ -54,43 +55,78 @@ public class EpollDatagramUnicastTest extends DatagramUnicastTest {
     }
 
     @Test
-    public void testSendSegmentedDatagramPacket() throws Throwable {
-        run();
+    public void testSendSegmentedDatagramPacket(TestInfo testInfo) throws Throwable {
+        run(testInfo, new Runner<Bootstrap, Bootstrap>() {
+            @Override
+            public void run(Bootstrap bootstrap, Bootstrap bootstrap2) throws Throwable {
+                testSendSegmentedDatagramPacket(bootstrap, bootstrap2);
+            }
+        });
     }
 
     public void testSendSegmentedDatagramPacket(Bootstrap sb, Bootstrap cb) throws Throwable {
-        testSegmentedDatagramPacket(sb, cb, false, false);
+        testSegmentedDatagramPacket(sb, cb, false, false, false);
     }
 
     @Test
-    public void testSendSegmentedDatagramPacketComposite() throws Throwable {
-        run();
+    public void testSendSegmentedDatagramPacketComposite(TestInfo testInfo) throws Throwable {
+        run(testInfo, new Runner<Bootstrap, Bootstrap>() {
+            @Override
+            public void run(Bootstrap bootstrap, Bootstrap bootstrap2) throws Throwable {
+                testSendSegmentedDatagramPacketComposite(bootstrap, bootstrap2);
+            }
+        });
     }
 
     public void testSendSegmentedDatagramPacketComposite(Bootstrap sb, Bootstrap cb) throws Throwable {
-        testSegmentedDatagramPacket(sb, cb, true, false);
+        testSegmentedDatagramPacket(sb, cb, true, false, false);
     }
 
     @Test
-    public void testSendAndReceiveSegmentedDatagramPacket() throws Throwable {
-        run();
+    public void testSendAndReceiveSegmentedDatagramPacket(TestInfo testInfo) throws Throwable {
+        run(testInfo, new Runner<Bootstrap, Bootstrap>() {
+            @Override
+            public void run(Bootstrap bootstrap, Bootstrap bootstrap2) throws Throwable {
+                testSendAndReceiveSegmentedDatagramPacket(bootstrap, bootstrap2);
+            }
+        });
     }
 
     public void testSendAndReceiveSegmentedDatagramPacket(Bootstrap sb, Bootstrap cb) throws Throwable {
-        testSegmentedDatagramPacket(sb, cb, false, true);
+        testSegmentedDatagramPacket(sb, cb, false, true, false);
     }
 
     @Test
-    public void testSendAndReceiveSegmentedDatagramPacketComposite() throws Throwable {
-        run();
+    public void testSendAndReceiveSegmentedDatagramPacketComposite(TestInfo testInfo) throws Throwable {
+        run(testInfo, new Runner<Bootstrap, Bootstrap>() {
+            @Override
+            public void run(Bootstrap bootstrap, Bootstrap bootstrap2) throws Throwable {
+                testSendAndReceiveSegmentedDatagramPacketComposite(bootstrap, bootstrap2);
+            }
+        });
     }
 
     public void testSendAndReceiveSegmentedDatagramPacketComposite(Bootstrap sb, Bootstrap cb) throws Throwable {
-        testSegmentedDatagramPacket(sb, cb, true, true);
+        testSegmentedDatagramPacket(sb, cb, true, true, false);
     }
 
-    private void testSegmentedDatagramPacket(Bootstrap sb, Bootstrap cb, boolean composite, boolean gro)
+    @Test
+    public void testSendAndReceiveSegmentedDatagramPacketWithScatteringRead(TestInfo testInfo) throws Throwable {
+        run(testInfo, new Runner<Bootstrap, Bootstrap>() {
+            @Override
+            public void run(Bootstrap bootstrap, Bootstrap bootstrap2) throws Throwable {
+                testSendAndReceiveSegmentedDatagramPacketWithScatteringRead(bootstrap, bootstrap2);
+            }
+        });
+    }
+
+    public void testSendAndReceiveSegmentedDatagramPacketWithScatteringRead(Bootstrap sb, Bootstrap cb)
             throws Throwable {
+        testSegmentedDatagramPacket(sb, cb, false, true, true);
+    }
+
+    private void testSegmentedDatagramPacket(Bootstrap sb, Bootstrap cb, boolean composite, boolean gro,
+            boolean scatteringRead) throws Throwable {
         if (!(cb.group() instanceof EpollEventLoopGroup)) {
             // Only supported for the native epoll transport.
             return;
@@ -99,7 +135,7 @@ public class EpollDatagramUnicastTest extends DatagramUnicastTest {
             // Only supported for the native epoll transport.
             return;
         }
-        Assume.assumeTrue(EpollDatagramChannel.isSegmentedDatagramPacketSupported());
+        assumeTrue(EpollDatagramChannel.isSegmentedDatagramPacketSupported());
         Channel sc = null;
         Channel cc = null;
 
@@ -122,7 +158,13 @@ public class EpollDatagramUnicastTest extends DatagramUnicastTest {
                 // Enable GRO and also ensure we can read everything with one read as otherwise
                 // we will drop things on the floor.
                 sb.option(EpollChannelOption.UDP_GRO, true);
-                sb.option(ChannelOption.RCVBUF_ALLOCATOR, new FixedRecvByteBufAllocator(bufferCapacity));
+                if (scatteringRead) {
+                    // Room for two batches, so the batch is read with recvmmsg instead of recvmsg.
+                    sb.option(EpollChannelOption.MAX_DATAGRAM_PAYLOAD_SIZE, bufferCapacity);
+                    sb.option(ChannelOption.RCVBUF_ALLOCATOR, new FixedRecvByteBufAllocator(2 * bufferCapacity));
+                } else {
+                    sb.option(ChannelOption.RCVBUF_ALLOCATOR, new FixedRecvByteBufAllocator(bufferCapacity));
+                }
             }
             sc = sb.handler(new SimpleChannelInboundHandler<DatagramPacket>() {
                 @Override

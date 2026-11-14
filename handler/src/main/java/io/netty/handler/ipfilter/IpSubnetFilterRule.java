@@ -35,6 +35,35 @@ public final class IpSubnetFilterRule implements IpFilterRule, Comparable<IpSubn
     private final IpFilterRule filterRule;
     private final String ipAddress;
 
+    /**
+     * Create a new {@link IpSubnetFilterRule} instance
+     *
+     * @param ipAddressWithCidr IP Address with CIDR notation, e.g. (192.168.0.0/16) or (2001:db8::/32)
+     * @param ruleType {@link IpFilterRuleType} to use
+     */
+    public IpSubnetFilterRule(String ipAddressWithCidr, IpFilterRuleType ruleType) {
+        try {
+            String[] ipAndCidr = ipAddressWithCidr.split("/");
+            if (ipAndCidr.length != 2) {
+                throw new IllegalArgumentException("ipAddressWithCidr: " + ipAddressWithCidr +
+                        " (expected: \"<ip-address>/<mask-size>\")");
+            }
+
+            ipAddress = ipAndCidr[0];
+            int cidrPrefix = Integer.parseInt(ipAndCidr[1]);
+            filterRule = selectFilterRule(SocketUtils.addressByName(ipAddress), cidrPrefix, ruleType);
+        } catch (UnknownHostException e) {
+            throw new IllegalArgumentException("ipAddressWithCidr", e);
+        }
+    }
+
+    /**
+     * Create a new {@link IpSubnetFilterRule} instance
+     *
+     * @param ipAddress IP Address as {@link String}
+     * @param cidrPrefix CIDR Prefix
+     * @param ruleType {@link IpFilterRuleType} to use
+     */
     public IpSubnetFilterRule(String ipAddress, int cidrPrefix, IpFilterRuleType ruleType) {
         try {
             this.ipAddress = ipAddress;
@@ -44,6 +73,13 @@ public final class IpSubnetFilterRule implements IpFilterRule, Comparable<IpSubn
         }
     }
 
+    /**
+     * Create a new {@link IpSubnetFilterRule} instance
+     *
+     * @param ipAddress IP Address as {@link InetAddress}
+     * @param cidrPrefix CIDR Prefix
+     * @param ruleType {@link IpFilterRuleType} to use
+     */
     public IpSubnetFilterRule(InetAddress ipAddress, int cidrPrefix, IpFilterRuleType ruleType) {
         this.ipAddress = ipAddress.getHostAddress();
         filterRule = selectFilterRule(ipAddress, cidrPrefix, ruleType);
@@ -113,15 +149,38 @@ public final class IpSubnetFilterRule implements IpFilterRule, Comparable<IpSubn
             Ip6SubnetFilterRule ip6SubnetFilterRule = (Ip6SubnetFilterRule) filterRule;
             return ip6SubnetFilterRule.networkAddress
                     .compareTo(Ip6SubnetFilterRule.ipToInt((Inet6Address) inetSocketAddress.getAddress())
-                            .and(ip6SubnetFilterRule.networkAddress));
+                            .and(ip6SubnetFilterRule.subnetMask));
         }
     }
 
     /**
-     * Equivalent to {@link Integer#compare(int, int)}
+     * {@code true} if every address matched by {@code other} is also matched by this rule.
+     */
+    boolean contains(IpSubnetFilterRule other) {
+        if (filterRule instanceof Ip4SubnetFilterRule) {
+            Ip4SubnetFilterRule parent = (Ip4SubnetFilterRule) filterRule;
+            Ip4SubnetFilterRule child = (Ip4SubnetFilterRule) other.filterRule;
+            return (parent.subnetMask & child.subnetMask) == parent.subnetMask &&
+                    (child.networkAddress & parent.subnetMask) == parent.networkAddress;
+        }
+        Ip6SubnetFilterRule parent = (Ip6SubnetFilterRule) filterRule;
+        Ip6SubnetFilterRule child = (Ip6SubnetFilterRule) other.filterRule;
+        return parent.subnetMask.and(child.subnetMask).equals(parent.subnetMask) &&
+                child.networkAddress.and(parent.subnetMask).equals(parent.networkAddress);
+    }
+
+    /**
+     * IPv4 addresses are compared as unsigned values, so 128.0.0.0 and above sort after 127.255.255.255.
      */
     private static int compareInt(int x, int y) {
-        return (x < y) ? -1 : ((x == y) ? 0 : 1);
+        int x1 = x ^ Integer.MIN_VALUE;
+        int y1 = y ^ Integer.MIN_VALUE;
+        return (x1 < y1) ? -1 : ((x1 == y1) ? 0 : 1);
+    }
+
+    @Override
+    public String toString() {
+        return "IpSubnetFilterRule(" + ipAddress + ", " + ruleType() + ')';
     }
 
     static final class Ip4SubnetFilterRule implements IpFilterRule {
@@ -167,7 +226,7 @@ public final class IpSubnetFilterRule implements IpFilterRule, Comparable<IpSubn
              *
              * Also see https://github.com/netty/netty/issues/2767
              */
-            return (int) ((-1L << 32 - cidrPrefix) & 0xffffffff);
+            return (int) (-1L << 32 - cidrPrefix);
         }
     }
 
@@ -195,7 +254,7 @@ public final class IpSubnetFilterRule implements IpFilterRule, Comparable<IpSubn
             final InetAddress inetAddress = remoteAddress.getAddress();
             if (inetAddress instanceof Inet6Address) {
                 BigInteger ipAddress = ipToInt((Inet6Address) inetAddress);
-                return ipAddress.and(subnetMask).equals(networkAddress);
+                return ipAddress.and(subnetMask).equals(subnetMask) || ipAddress.and(subnetMask).equals(networkAddress);
             }
             return false;
         }
@@ -209,7 +268,7 @@ public final class IpSubnetFilterRule implements IpFilterRule, Comparable<IpSubn
             byte[] octets = ipAddress.getAddress();
             assert octets.length == 16;
 
-            return new BigInteger(octets);
+            return new BigInteger(1, octets);
         }
 
         private static BigInteger prefixToSubnetMask(int cidrPrefix) {

@@ -15,16 +15,17 @@
  */
 package io.netty.util.internal.logging;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 public class JdkLoggerFactoryTest {
 
     @Test
     public void testCreation() {
         InternalLogger logger = JdkLoggerFactory.INSTANCE.newInstance("foo");
-        assertTrue(logger instanceof JdkLogger);
+        assertInstanceOf(JdkLogger.class, logger);
         assertEquals("foo", logger.name());
     }
 }
